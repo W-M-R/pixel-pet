@@ -43,8 +43,10 @@ def build():
     zoom = 20                      # 32 * 20 = 640
     px_w = CELL * zoom
     ox = (SIZE - px_w) // 2
-    # 让脚落在地面线上：源图脚部约在 y=26
-    oy = floor_y - 26 * zoom + 2 * zoom
+    # 让脚正好落在地板线上。源图脚底在 y=26（含），
+    # 所以第 27 行的顶边要对齐 floor_y。
+    FOOT_ROW = 27
+    oy = floor_y - FOOT_ROW * zoom
 
     for y in range(CELL):
         for x in range(CELL):
