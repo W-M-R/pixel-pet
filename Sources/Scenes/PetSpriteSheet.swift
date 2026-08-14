@@ -86,10 +86,28 @@ enum PetSpriteSheet {
         return tex
     }
 
+    /// 每行实际的有效帧数。
+    ///
+    /// ⚠️ **不是所有行都有 4 帧。**实测（解码 PNG 逐格扫 alpha）：
+    /// - cat.png 的 r1(正视) 和 r2(背视) 只有 **3 帧**，第 4 格是空的
+    /// - cat.png 的 r0/r3/r4 有 4 帧
+    /// - dog.png 全部 5 行都是 4 帧
+    ///
+    /// 之前一律按 4 帧播放，导致猫朝前/朝后走时会闪出一个空帧 ——
+    /// 看起来就像"身体和头分离"。
+    static func frameCount(sheetName: String, row: Int) -> Int {
+        if sheetName == "cat", row == Facing.front.row || row == Facing.back.row {
+            return 3
+        }
+        return columnsPerColor
+    }
+
     static func frames(from sheet: SKTexture,
                        action: Action,
-                       colorIndex: Int) -> [SKTexture] {
-        (0..<columnsPerColor).map {
+                       colorIndex: Int,
+                       sheetName: String) -> [SKTexture] {
+        let count = frameCount(sheetName: sheetName, row: action.row)
+        return (0..<count).map {
             texture(from: sheet, row: action.row, column: $0, colorIndex: colorIndex)
         }
     }

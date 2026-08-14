@@ -411,7 +411,8 @@ final class PetScene: SKScene {
         guard let sheet, let pet else { return }
         let frames = PetSpriteSheet.frames(from: sheet,
                                            action: .walk(facing),
-                                           colorIndex: colorIndex)
+                                           colorIndex: colorIndex,
+                                           sheetName: species.sheetName)
         guard !frames.isEmpty else { return }
         pet.removeAction(forKey: "anim")
         let anim = SKAction.animate(with: frames,
@@ -423,7 +424,9 @@ final class PetScene: SKScene {
 
     private func applyEatAnimation(then completion: @escaping () -> Void) {
         guard let sheet, let pet else { return }
-        let frames = PetSpriteSheet.frames(from: sheet, action: .eat, colorIndex: colorIndex)
+        let frames = PetSpriteSheet.frames(from: sheet, action: .eat,
+                                           colorIndex: colorIndex,
+                                           sheetName: species.sheetName)
         guard !frames.isEmpty else { completion(); return }
         pet.removeAction(forKey: "anim")
         let chew = SKAction.animate(with: frames,
