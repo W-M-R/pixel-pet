@@ -14,6 +14,7 @@ import Observation
 /// 中文环境根本不启动 AI（350M 中文不成句，实测见凭证），
 /// 只用预写台词。
 @Observable
+@MainActor
 final class PetTalkCoordinator {
 
     /// 当前要显示的台词。nil = 不显示气泡。
@@ -29,8 +30,14 @@ final class PetTalkCoordinator {
     /// 台词最短间隔。防止连续戳宠物时气泡刷屏。
     private let cooldown: TimeInterval = 4
 
+    /// 当前生效语言。AI 只支持英文，读的是 **app 内选择的语言**，
+    /// 所以用户在设置里把 app 切成英文就能用 AI，不必改系统语言。
+    private var languageCode: String {
+        LocalizationManager.shared.effectiveLanguageCode
+    }
+
     var aiAvailability: PetChatEngine.Availability {
-        PetChatEngine.availability()
+        PetChatEngine.availability(languageCode: languageCode)
     }
 
     /// 开关状态。关闭时顺便卸载模型，把内存还回去。
@@ -74,12 +81,13 @@ final class PetTalkCoordinator {
 
         // 2) 英文环境才启动 AI
         generationTask?.cancel()
-        guard case .ready = PetChatEngine.availability() else { return true }
+        let lang = languageCode
+        guard case .ready = PetChatEngine.availability(languageCode: lang) else { return true }
 
         isGenerating = true
         generationTask = Task { [weak self] in
             guard let self else { return }
-            let ai = await engine.generateLine(for: context)
+            let ai = await engine.generateLine(for: context, languageCode: lang)
             await MainActor.run {
                 self.isGenerating = false
                 // 只有还是同一次触发才替换，避免旧结果覆盖新台词
@@ -98,5 +106,6 @@ final class PetTalkCoordinator {
         isGenerating = false
     }
 
-    deinit { generationTask?.cancel() }
+    // 注：@MainActor 类的 deinit 不能访问隔离状态，
+    // 所以这里不 cancel。Task 持的是 weak self，泄漏风险可忽略。
 }

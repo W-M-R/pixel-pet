@@ -109,10 +109,10 @@ struct PetHomeView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(store.pet.name.isEmpty
-                         ? String(localized: store.pet.species.displayNameKey)
+                         ? L(store.pet.species.displayNameKey)
                          : store.pet.name)
                         .font(.system(size: 17, weight: .bold, design: .monospaced))
-                    Text(String(format: String(localized: "home.age"), store.pet.ageInDays))
+                    Text(verbatim: L("home.age", store.pet.ageInDays))
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
@@ -134,7 +134,7 @@ struct PetHomeView: View {
                 StatBar(labelKey: "stat.hygiene", value: store.pet.hygiene(at: now), tint: .cyan)
             }
 
-            Text(String(localized: store.pet.dominantNeed(at: now).messageKey))
+            Text(verbatim: L(store.pet.dominantNeed(at: now).messageKey))
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.75))
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -176,7 +176,7 @@ private struct StatBar: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            Text(String(localized: labelKey))
+            Text(verbatim: L(labelKey))
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.6))
             GeometryReader { geo in
@@ -201,7 +201,7 @@ private struct ActionButton: View {
         Button(action: action) {
             VStack(spacing: 3) {
                 Text(emoji).font(.system(size: 22))
-                Text(String(localized: titleKey))
+                Text(verbatim: L(titleKey))
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
             }
             .frame(maxWidth: .infinity)
@@ -219,6 +219,14 @@ private struct DebugPanel: View {
     let store: PetStore
     let talk: PetTalkCoordinator
     let onResetRoom: () -> Void
+
+    /// 当前语言的显示名（母语名），跟随系统时显示"跟随系统"。
+    private var currentLanguageName: String {
+        let m = LocalizationManager.shared
+        if m.isFollowingSystem { return L("language.system") }
+        return AppLanguage.all.first { $0.code == m.selectedCode }?.endonym
+            ?? m.selectedCode
+    }
 
     private var aiStatusText: String {
         switch talk.aiAvailability {
@@ -245,7 +253,7 @@ private struct DebugPanel: View {
                         set: { store.choose(species: $0, colorIndex: store.pet.colorIndex) }
                     )) {
                         ForEach(PetSpecies.allCases) { s in
-                            Text(String(localized: s.displayNameKey)).tag(s)
+                            Text(verbatim: L(s.displayNameKey)).tag(s)
                         }
                     }
                     Picker("毛色", selection: Binding(
@@ -265,6 +273,24 @@ private struct DebugPanel: View {
                 Section {
                     Button("重置状态", role: .destructive) { store.resetAll() }
                 }
+                Section {
+                    NavigationLink {
+                        LanguagePickerView()
+                    } label: {
+                        HStack {
+                            Text(verbatim: L("settings.language"))
+                            Spacer()
+                            Text(verbatim: currentLanguageName)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } header: {
+                    Text(verbatim: L("settings.language"))
+                } footer: {
+                    Text(verbatim: L("settings.language.footer"))
+                        .font(.caption2)
+                }
+
                 Section {
                     Toggle("AI 台词", isOn: Binding(
                         get: { talk.aiEnabled },
@@ -291,13 +317,6 @@ private struct DebugPanel: View {
                 }
             }
         }
-    }
-}
-
-extension String {
-    /// 简写：走 Localizable，key 不存在时回退到 key 本身。
-    init(localized key: String) {
-        self = NSLocalizedString(key, comment: "")
     }
 }
 

@@ -46,7 +46,9 @@ enum PetLines {
         let category = pickCategory(context, absentDays: absentDays)
         let index = Int.random(in: 1...category.count)
         let key = "line.\(category.rawValue).\(index)"
-        let format = NSLocalizedString(key, comment: "")
+        // 用 L() 而非 NSLocalizedString —— 后者锁定进程启动语言，
+        // 应用内切语言时台词不会跟着变。
+        let format = L(key)
         // 支持 %@ 占位符插宠物名
         if format.contains("%@") {
             return String(format: format, context.name)

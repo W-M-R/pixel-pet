@@ -64,7 +64,7 @@ final class PetStore {
         let now = Date()
         return PetLineContext(
             name: pet.name.isEmpty
-                ? NSLocalizedString(pet.species.displayNameKey, comment: "")
+                ? L(pet.species.displayNameKey)
                 : pet.name,
             species: pet.species == .cat ? "cat" : "dog",
             satiety: pet.satiety(at: now),
