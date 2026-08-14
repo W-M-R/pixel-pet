@@ -4,6 +4,7 @@ import SpriteKit
 struct PetHomeView: View {
     @State private var store = PetStore()
     @State private var roomStore = RoomStore()
+    @State private var talk = PetTalkCoordinator()
     @State private var scene = PetScene()
     @State private var showDebug = false
     @Environment(\.scenePhase) private var scenePhase
@@ -34,8 +35,20 @@ struct PetHomeView: View {
             scene.onPetTouched = {
                 // 睡着时戳它 = 叫醒，并维持一段清醒。
                 // 否则站起来后下一次心跳又会把它按回去睡。
-                if store.pet.isDrowsy() { store.wakeUp() }
+                let wasDrowsy = store.pet.isDrowsy()
+                if wasDrowsy { store.wakeUp() }
                 store.stroke()
+                say(wasDrowsy ? .wokenUp : .stroked)
+            }
+
+            // 开场问候。读 daysSinceLastSeen 必须在 markSeen 之前。
+            let absent = store.daysSinceLastSeen
+            store.markSeen()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                if talk.speak(store.lineContext(trigger: .appeared),
+                              absentDays: absent, force: true) {
+                    scene.showSpeech(talk.currentLine ?? "")
+                }
             }
             scene.onFurnitureMoved = { id, ratio in
                 roomStore.move(id: id, toXRatio: ratio)
@@ -44,6 +57,12 @@ struct PetHomeView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.refresh() }
+        }
+        .onChange(of: talk.currentLine) { _, line in
+            // AI 台词后到时替换气泡。实测模拟器 CPU-only 要 2-5s，
+            // 所以预写台词的气泡时长要够长（见 showSpeech 默认 duration），
+            // 否则 AI 结果到达时气泡已经消失了。
+            if let line { scene.showSpeech(line) }
         }
         .onChange(of: store.tick) { _, _ in
             // 按自然作息决定睡不睡，与用户互动无关。
@@ -64,6 +83,19 @@ struct PetHomeView: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    /// 触发说话。预写台词立刻出，AI 台词后到会自动替换。
+    private func say(_ trigger: PetLineContext.Trigger, delay: TimeInterval = 0) {
+        let fire = {
+            guard talk.speak(store.lineContext(trigger: trigger)) else { return }
+            scene.showSpeech(talk.currentLine ?? "")
+        }
+        if delay > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: fire)
+        } else {
+            fire()
+        }
     }
 
     // MARK: - 状态栏
@@ -115,14 +147,17 @@ struct PetHomeView: View {
             ActionButton(titleKey: "action.feed", emoji: "🍖") {
                 store.feed()
                 scene.triggerEat()
+                say(.fed, delay: 1.6)     // 等咀嚼动画演完再说话
             }
             ActionButton(titleKey: "action.play", emoji: "🎾") {
                 store.play()
                 scene.triggerPlay()
+                say(.stroked, delay: 0.7)
             }
             ActionButton(titleKey: "action.clean", emoji: "🛁") {
                 store.clean()
                 scene.triggerClean()
+                say(.cleaned, delay: 0.8)
             }
         }
     }

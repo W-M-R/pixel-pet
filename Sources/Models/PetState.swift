@@ -37,6 +37,10 @@ struct PetState: Codable, Equatable {
     /// 被用户叫醒后维持清醒到这个时刻。nil = 未被叫醒。
     /// 可选类型，这样旧存档解码时不会失败。
     var awakeUntil: Date?
+
+    /// 上次打开 app 的时间，用来算"久别重逢"。
+    /// 可选，旧存档兼容。
+    var lastSeenAt: Date?
     var lastFedAt: Date
     var lastPlayedAt: Date
     var lastCleanedAt: Date
@@ -68,6 +72,7 @@ struct PetState: Codable, Equatable {
         self.lastPlayedAt = now
         self.lastCleanedAt = now
         self.awakeUntil = nil
+        self.lastSeenAt = now
     }
 
     // MARK: - 派生数值（读时计算，全部 0...1）

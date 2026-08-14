@@ -47,6 +47,34 @@ final class PetStore {
     /// 从后台回到前台时立刻刷一次，不等下一个心跳。
     func refresh() { tick = Date() }
 
+    /// 距上次打开过了几天。用于"久别重逢"台词。
+    var daysSinceLastSeen: Int {
+        guard let last = pet.lastSeenAt else { return 0 }
+        return max(0, Calendar.current.dateComponents([.day], from: last, to: Date()).day ?? 0)
+    }
+
+    /// 记录本次打开。要在读过 daysSinceLastSeen 之后调用。
+    func markSeen() {
+        pet.lastSeenAt = Date()
+        persist()
+    }
+
+    /// 当前状态快照，供台词生成用。
+    func lineContext(trigger: PetLineContext.Trigger) -> PetLineContext {
+        let now = Date()
+        return PetLineContext(
+            name: pet.name.isEmpty
+                ? NSLocalizedString(pet.species.displayNameKey, comment: "")
+                : pet.name,
+            species: pet.species == .cat ? "cat" : "dog",
+            satiety: pet.satiety(at: now),
+            mood: pet.mood(at: now),
+            hygiene: pet.hygiene(at: now),
+            isDrowsy: pet.isDrowsy(at: now),
+            ageInDays: pet.ageInDays,
+            trigger: trigger)
+    }
+
     // MARK: - 互动
 
     func feed() {

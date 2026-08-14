@@ -1,90 +1,886 @@
 {
-  "sourceLanguage" : "zh-Hans",
-  "strings" : {
-    "action.clean" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Clean" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "洗澡" } }
+  "sourceLanguage": "zh-Hans",
+  "strings": {
+    "action.clean": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clean"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "洗澡"
+          }
+        }
       }
     },
-    "action.feed" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Feed" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "喂食" } }
+    "action.feed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "喂食"
+          }
+        }
       }
     },
-    "action.play" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Play" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "玩耍" } }
+    "action.play": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "玩耍"
+          }
+        }
       }
     },
-    "home.age" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Day %d together" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "相伴第 %d 天" } }
+    "home.age": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Day %d together"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "相伴第 %d 天"
+          }
+        }
       }
     },
-    "need.bored" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Looking a little bored…" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "有点无聊,陪它玩会儿吧" } }
+    "line.bored.1": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "So bored…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好无聊呀"
+          }
+        }
       }
     },
-    "need.content" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Feeling great right now." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "现在心情不错" } }
+    "line.bored.2": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play with me a bit?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "陪我玩一会儿嘛"
+          }
+        }
       }
     },
-    "need.dirty" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Could use a bath." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "该洗澡了" } }
+    "line.bored.3": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I miss you a little"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有点想你了"
+          }
+        }
       }
     },
-    "need.hungry" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Getting hungry!" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "肚子饿了!" } }
+    "line.bored.4": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What shall we do today?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今天做什么呢？"
+          }
+        }
       }
     },
-    "need.sleepy" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Getting sleepy…" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "有点困了" } }
+    "line.cleaned.1": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All clean now!"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "变干净啦！"
+          }
+        }
       }
     },
-    "species.cat" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Cat" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "小猫" } }
+    "line.cleaned.2": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I smell nice~"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "香香的~"
+          }
+        }
       }
     },
-    "species.dog" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Dog" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "小狗" } }
+    "line.cleaned.3": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "My fur is so soft"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "毛毛滑滑的"
+          }
+        }
       }
     },
-    "stat.hygiene" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "CLEAN" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "清洁" } }
+    "line.dirty.1": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I feel a bit grubby"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "身上有点脏了"
+          }
+        }
       }
     },
-    "stat.mood" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "MOOD" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "心情" } }
+    "line.dirty.2": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I'd like a bath…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "想洗个澡…"
+          }
+        }
       }
     },
-    "stat.satiety" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "FULL" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "饱食" } }
+    "line.dirty.3": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "My fur is a mess"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "毛毛乱糟糟的"
+          }
+        }
+      }
+    },
+    "line.dirty.4": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brush me please?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "帮我梳梳毛？"
+          }
+        }
+      }
+    },
+    "line.fed.1": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yummy! Thank you"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好好吃！谢谢你"
+          }
+        }
+      }
+    },
+    "line.fed.2": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All full now~"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "吃饱啦，满足"
+          }
+        }
+      }
+    },
+    "line.fed.3": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That's my favorite!"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个我最爱吃了"
+          }
+        }
+      }
+    },
+    "line.greeting.1": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're here!"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你来啦！"
+          }
+        }
+      }
+    },
+    "line.greeting.2": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hi there!"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "嗨，主人"
+          }
+        }
+      }
+    },
+    "line.greeting.3": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I was waiting for you"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "我在等你呢"
+          }
+        }
+      }
+    },
+    "line.happy.1": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feeling great today!"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今天心情超好！"
+          }
+        }
+      }
+    },
+    "line.happy.2": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "So happy with you"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "和你在一起真开心"
+          }
+        }
+      }
+    },
+    "line.happy.3": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Purr purr~"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "呼噜呼噜~"
+          }
+        }
+      }
+    },
+    "line.happy.4": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What a lovely day!"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今天是好日子！"
+          }
+        }
+      }
+    },
+    "line.hungry.1": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "My tummy is rumbling…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "肚子有点饿了…"
+          }
+        }
+      }
+    },
+    "line.hungry.2": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could I have a snack?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "能给我点吃的吗？"
+          }
+        }
+      }
+    },
+    "line.hungry.3": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I smell something tasty!"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "闻到食物的味道了！"
+          }
+        }
+      }
+    },
+    "line.hungry.4": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "My bowl looks empty…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "碗好像空了呢"
+          }
+        }
+      }
+    },
+    "line.longAbsence.1": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're finally back!"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你终于回来了！"
+          }
+        }
+      }
+    },
+    "line.longAbsence.2": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I missed you so much"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好久不见，我很想你"
+          }
+        }
+      }
+    },
+    "line.longAbsence.3": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I've been waiting for you"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "我一直在等你哦"
+          }
+        }
+      }
+    },
+    "line.sleepy.1": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "So sleepy…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好困呀…"
+          }
+        }
+      }
+    },
+    "line.sleepy.2": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Time for bed…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要睡觉了呢"
+          }
+        }
+      }
+    },
+    "line.sleepy.3": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can't keep my eyes open"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "眼睛睁不开了"
+          }
+        }
+      }
+    },
+    "line.sleepy.4": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Good night…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "晚安…"
+          }
+        }
+      }
+    },
+    "line.stroked.1": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That feels so nice~"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好舒服呀~"
+          }
+        }
+      }
+    },
+    "line.stroked.2": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More pets please"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再摸摸嘛"
+          }
+        }
+      }
+    },
+    "line.stroked.3": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I love you the most"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最喜欢你了"
+          }
+        }
+      }
+    },
+    "line.veryHungry.1": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I'm starving!"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "我快饿晕了！"
+          }
+        }
+      }
+    },
+    "line.veryHungry.2": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Haven't eaten in ages…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好久没吃东西了…"
+          }
+        }
+      }
+    },
+    "line.veryHungry.3": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Please, feed me…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "求求你，喂喂我"
+          }
+        }
+      }
+    },
+    "line.wokenUp.1": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mmm… what time is it?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "唔…几点了？"
+          }
+        }
+      }
+    },
+    "line.wokenUp.2": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Just five more minutes…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "我还想再睡会儿"
+          }
+        }
+      }
+    },
+    "line.wokenUp.3": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You woke me up~"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "被你叫醒了呢"
+          }
+        }
+      }
+    },
+    "need.bored": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Looking a little bored…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有点无聊,陪它玩会儿吧"
+          }
+        }
+      }
+    },
+    "need.content": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feeling great right now."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "现在心情不错"
+          }
+        }
+      }
+    },
+    "need.dirty": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could use a bath."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "该洗澡了"
+          }
+        }
+      }
+    },
+    "need.hungry": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Getting hungry!"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "肚子饿了!"
+          }
+        }
+      }
+    },
+    "need.sleepy": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Getting sleepy…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有点困了"
+          }
+        }
+      }
+    },
+    "species.cat": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cat"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "小猫"
+          }
+        }
+      }
+    },
+    "species.dog": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dog"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "小狗"
+          }
+        }
+      }
+    },
+    "stat.hygiene": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CLEAN"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清洁"
+          }
+        }
+      }
+    },
+    "stat.mood": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MOOD"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "心情"
+          }
+        }
+      }
+    },
+    "stat.satiety": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FULL"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "饱食"
+          }
+        }
       }
     }
   },
-  "version" : "1.0"
+  "version": "1.0"
 }

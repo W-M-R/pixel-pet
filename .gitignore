@@ -13,3 +13,12 @@ ASSET-PROVENANCE/**/*.zip
 
 # 验证截图
 .probe/
+
+# 模型转换工作区（权重 676MB + venv，不入库）
+tools/convert/.venv/
+tools/convert/hf/
+tools/convert/out/
+
+# 打包用的模型（170MB，超 GitHub 100MB 单文件限制）
+# 由 tools/convert/to_coreml.py 生成，凭证见 ASSET-PROVENANCE/lfm2-350m/
+Models/LFM2-350M.mlpackage/

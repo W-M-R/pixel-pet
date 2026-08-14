@@ -28,6 +28,11 @@ final class PetScene: SKScene {
     private var pet: SKSpriteNode!
     private var shadow: SKShapeNode!
     private var bubble: SKNode?
+    /// 气泡相对宠物脚底的竖直偏移，用于每帧跟随。
+    /// 存下来是因为台词气泡和 emote 气泡的高度不同。
+    private var bubbleYOffset: CGFloat = 0
+    /// 气泡自身宽度的一半，用于跟随时做屏幕边界钳制。
+    private var bubbleHalfWidth: CGFloat = 0
     private var foodNode: SKNode?
 
     private var colorIndex: Int = 0
@@ -391,6 +396,10 @@ final class PetScene: SKScene {
         static let artBg        = SKColor(red: 0.56, green: 0.72, blue: 0.78, alpha: 1)
         static let artHill      = SKColor(red: 0.42, green: 0.60, blue: 0.42, alpha: 1)
         static let artSun       = SKColor(red: 0.96, green: 0.80, blue: 0.42, alpha: 1)
+        // 台词气泡
+        static let speechFill   = SKColor(red: 0.98, green: 0.97, blue: 0.94, alpha: 1)
+        static let speechBorder = SKColor(red: 0.24, green: 0.20, blue: 0.24, alpha: 1)
+        static let speechText   = SKColor(red: 0.18, green: 0.16, blue: 0.20, alpha: 1)
         // 壁灯
         static let lampShade    = SKColor(red: 0.90, green: 0.74, blue: 0.44, alpha: 1)
         static let lampGlow     = SKColor(red: 1.00, green: 0.92, blue: 0.70, alpha: 1)
@@ -506,6 +515,7 @@ final class PetScene: SKScene {
             }
         }
         syncShadow()
+        syncBubble()
     }
 
     /// 由 UI 层按 PetState.energy 驱动。困了就趴下，休息够了自己起来。
@@ -766,6 +776,92 @@ final class PetScene: SKScene {
         present(bubbleNode: sprite)
     }
 
+    /// 台词气泡：像素风的白底黑边对话框 + 小尾巴。
+    ///
+    /// 用多行文本而不是单行 —— 台词可能十几个字，单行会超出屏幕。
+    /// 尺寸取 pixelScale 整数倍，和其余像素元素保持同密度。
+    func showSpeech(_ text: String, duration: TimeInterval = 6.0) {
+        guard let pet, !text.isEmpty else { return }
+        bubble?.removeFromParent()
+
+        let u = pixelScale
+        let maxWidth = size.width * 0.62
+
+        let label = SKLabelNode(text: text)
+        label.fontName = "Menlo-Bold"
+        label.fontSize = 13
+        label.fontColor = Palette.speechText
+        label.numberOfLines = 0
+        label.preferredMaxLayoutWidth = maxWidth - u * 6
+        label.horizontalAlignmentMode = .center
+        label.verticalAlignmentMode = .center
+
+        let textSize = label.calculateAccumulatedFrame().size
+        let boxW = min(maxWidth, max(u * 20, textSize.width + u * 6))
+        let boxH = max(u * 10, textSize.height + u * 5)
+
+        let container = SKNode()
+
+        // 外边框（深色）
+        let border = SKSpriteNode(color: Palette.speechBorder,
+                                  size: CGSize(width: boxW + u * 2, height: boxH + u * 2))
+        border.position = .zero
+        container.addChild(border)
+
+        // 内底（浅色）
+        let fill = SKSpriteNode(color: Palette.speechFill,
+                                size: CGSize(width: boxW, height: boxH))
+        fill.position = .zero
+        container.addChild(fill)
+
+        label.position = .zero
+        label.zPosition = 1
+        container.addChild(label)
+
+        // 尾巴：两级台阶指向宠物
+        for (i, w) in [3, 1].enumerated() {
+            let step = SKSpriteNode(color: Palette.speechFill,
+                                    size: CGSize(width: u * CGFloat(w), height: u))
+            step.position = CGPoint(x: 0, y: -boxH / 2 - u * CGFloat(i) - u / 2)
+            container.addChild(step)
+            let edge = SKSpriteNode(color: Palette.speechBorder,
+                                    size: CGSize(width: u * CGFloat(w) + u * 2, height: u))
+            edge.position = CGPoint(x: 0, y: step.position.y - u * 0.5)
+            edge.zPosition = -1
+            container.addChild(edge)
+        }
+
+        // 记下偏移量，update() 里每帧跟随宠物
+        bubbleYOffset = pixelScale * 26 + boxH / 2
+        bubbleHalfWidth = boxW / 2 + u * 3
+        container.zPosition = 20
+        container.alpha = 0
+        container.setScale(0.85)
+        addChild(container)
+        bubble = container
+        syncBubble()
+
+        // 淡出**不能**用 moveBy —— 每帧的 syncBubble 会覆盖位移，
+        // 两者打架会让气泡抖动。只做淡出和缩放。
+        container.run(.sequence([
+            .group([.fadeIn(withDuration: 0.14), .scale(to: 1, duration: 0.16)]),
+            .wait(forDuration: duration),
+            .group([.fadeOut(withDuration: 0.28), .scale(to: 0.94, duration: 0.28)]),
+            .removeFromParent()
+        ]))
+    }
+
+    /// 让气泡跟着宠物走。每帧调用。
+    ///
+    /// 之前气泡位置在创建时固定，宠物走开后气泡留在原地。
+    /// 现在每帧重算，并做屏幕边界钳制，避免气泡跑出画面。
+    private func syncBubble() {
+        guard let bubble, let pet, bubble.parent != nil else { return }
+        let halfW = max(bubbleHalfWidth, pixelScale * 4)
+        let x = min(size.width - halfW, max(halfW, pet.position.x))
+        bubble.position = CGPoint(x: x, y: petFeetY + bubbleYOffset)
+    }
+
     private func showEmojiBubble(_ text: String) {
         let label = SKLabelNode(text: text)
         label.fontSize = 26
@@ -774,20 +870,23 @@ final class PetScene: SKScene {
     }
 
     private func present(bubbleNode node: SKNode) {
-        guard let pet else { return }
+        guard pet != nil else { return }
         bubble?.removeFromParent()
 
         // 气泡浮在头顶上方。头顶 = 脚底 + 内容高度(19 源像素)，再留 4 像素间隙
-        node.position = CGPoint(x: pet.position.x, y: petFeetY + pixelScale * 23)
+        bubbleYOffset = pixelScale * 23
+        bubbleHalfWidth = pixelScale * 5
         node.zPosition = 20
         node.alpha = 0
         addChild(node)
         bubble = node
+        syncBubble()
 
+        // 同样不用 moveBy，避免和 syncBubble 的每帧定位冲突
         node.run(.sequence([
-            .group([.fadeIn(withDuration: 0.15), .moveBy(x: 0, y: 14, duration: 0.15)]),
+            .fadeIn(withDuration: 0.15),
             .wait(forDuration: 1.1),
-            .group([.fadeOut(withDuration: 0.3), .moveBy(x: 0, y: 10, duration: 0.3)]),
+            .fadeOut(withDuration: 0.3),
             .removeFromParent()
         ]))
     }
