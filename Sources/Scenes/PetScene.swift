@@ -78,16 +78,21 @@ final class PetScene: SKScene {
     // 分层的意义：家具和宠物在垂直方向上不重叠，所以永远不会互相遮挡。
     // 之前家具和宠物都堆在 groundY 附近，宠物一走过去就被压住。
 
-    /// 墙脚线。墙与地面的分界，家具坐在这条线上。
-    ///
-    /// 0.34 是按最高家具反推的：书架/床 64 源像素 × pixelScale 4 = 256pt，
-    /// 顶边落在 0.34H + 256 ≈ 0.61H，正好在状态栏（约 0.80H 以上）之下，
-    /// 留出明显间隙。再高就会显得顶到 UI。
+    /// 墙脚线。墙与地面的分界，也是地板的最远处。
     private var wallBaseY: CGFloat { size.height * 0.30 }
 
-    /// 宠物脚底线。墙脚线下方留一条通道，
-    /// 高度约宠物身高的 1.5 倍，够走动又不空旷。
-    private var groundY: CGFloat { size.height * 0.155 }
+    /// 地板平面。宠物在这个梯形区域里自由走动（不再是一条线）。
+    ///
+    /// 前缘留 0.055H 而不是贴到 0：底部要给操作栏留位置，
+    /// 而且宠物太靠下会被自己的影子挤出画面。
+    private var floor: FloorPlane {
+        FloorPlane(backY: wallBaseY - pixelScale * 2,
+                   frontY: size.height * 0.055,
+                   width: size.width)
+    }
+
+    /// 兼容用：默认站位取地板中段偏近处
+    private var groundY: CGFloat { floor.y(atDepth: 0.35) }
 
     var onPetTouched: (() -> Void)?
 
@@ -149,7 +154,7 @@ final class PetScene: SKScene {
         pet = SKSpriteNode(texture: firstFrame)
         pet.texture?.filteringMode = .nearest
         pet.setScale(pixelScale)
-        pet.position = CGPoint(x: size.width / 2, y: groundY)
+        pet.position = floor.clamp(CGPoint(x: size.width / 2, y: floor.y(atDepth: 0.35)))
         pet.zPosition = 10
         addChild(pet)
 
@@ -241,7 +246,7 @@ final class PetScene: SKScene {
         floor.zPosition = -6
         addChild(floor)
 
-        // 地板条：横向木纹，间距随纵向递增，制造一点透视纵深
+        // 地板条：横向木纹，间距随纵向递增，制造透视纵深
         var y: CGFloat = base - u * 3
         var gap: CGFloat = u * 3
         while y > 0 {
@@ -254,6 +259,10 @@ final class PetScene: SKScene {
             y -= gap
             gap += u * 0.5                  // 越靠下间距越大 = 越近
         }
+
+        // 侧墙：把地板收成梯形，让「可走范围远处窄」在视觉上成立。
+        // 不画这两块的话，宠物走到远处会离屏幕边缘很远，看着像被无形墙挡住。
+        drawSideWalls(u: u)
 
         // ── 踢脚线：坐在墙脚线上，两像素高，亮暗两色做立体感 ──
         let skirtDark = SKSpriteNode(color: Palette.skirtingDark,
@@ -269,6 +278,47 @@ final class PetScene: SKScene {
         skirtLite.position = CGPoint(x: 0, y: base + u)
         skirtLite.zPosition = 0.5
         addChild(skirtLite)
+    }
+
+    /// 左右侧墙。用阶梯状的像素块逼近斜边 —— 像素画里不画抗锯齿斜线，
+    /// 靠台阶表现透视，这样和其余部分的像素密度一致。
+    ///
+    /// 台阶的斜率直接取自 FloorPlane.perspectiveInset，
+    /// 所以视觉边界和实际可行走范围永远吻合。
+    private func drawSideWalls(u: CGFloat) {
+        let f = floor
+        // 每级 8 源像素。3 源像素时台阶太密，看着像锯齿而不是透视墙。
+        let steps = max(3, Int((f.backY - f.frontY) / (u * 8)))
+
+        for i in 0..<steps {
+            let d0 = CGFloat(i) / CGFloat(steps)
+            let d1 = CGFloat(i + 1) / CGFloat(steps)
+            let y0 = f.y(atDepth: d0)
+            let y1 = f.y(atDepth: d1)
+            let h = max(u, y1 - y0)
+            // 用该段较远端的内缩量，保证墙不会盖住可行走区
+            let inset = (f.xRange(atDepth: d1).lowerBound / u).rounded() * u
+            guard inset > 0 else { continue }
+
+            for side in 0..<2 {
+                let x = side == 0 ? 0 : size.width - inset
+                let yy = (y0 / u).rounded() * u
+                let n = SKSpriteNode(color: Palette.sideWall,
+                                     size: CGSize(width: inset, height: h))
+                n.anchorPoint = CGPoint(x: 0, y: 0)
+                n.position = CGPoint(x: x, y: yy)
+                n.zPosition = -4.5
+                addChild(n)
+
+                // 内侧竖边描一条暗线，台阶轮廓更清楚
+                let edge = SKSpriteNode(color: Palette.sideWallEdge,
+                                        size: CGSize(width: u, height: h))
+                edge.anchorPoint = CGPoint(x: 0, y: 0)
+                edge.position = CGPoint(x: side == 0 ? inset - u : size.width - inset, y: yy)
+                edge.zPosition = -4.4
+                addChild(edge)
+            }
+        }
     }
 
     /// 墙上的装饰：窗、挂画、壁灯。
@@ -339,6 +389,9 @@ final class PetScene: SKScene {
         static let floorSeam    = SKColor(red: 0.52, green: 0.35, blue: 0.24, alpha: 1)
         static let skirtingDark = SKColor(red: 0.38, green: 0.26, blue: 0.19, alpha: 1)
         static let skirtingLite = SKColor(red: 0.72, green: 0.56, blue: 0.42, alpha: 1)
+        // 侧墙：比地板暗，把地板收成梯形
+        static let sideWall     = SKColor(red: 0.46, green: 0.33, blue: 0.24, alpha: 1)
+        static let sideWallEdge = SKColor(red: 0.36, green: 0.25, blue: 0.18, alpha: 1)
         // 窗外夜景
         static let sky          = SKColor(red: 0.14, green: 0.19, blue: 0.36, alpha: 1)
         static let hill         = SKColor(red: 0.17, green: 0.27, blue: 0.31, alpha: 1)
@@ -389,7 +442,7 @@ final class PetScene: SKScene {
     private func applySleepPose() {
         guard let pet else { return }
         pet.removeAction(forKey: "anim")
-        pet.setScale(pixelScale)
+        applyDepthScale()
 
         let frames = sleepSheet.map {
             PetSpriteSheet.sleepFrames(from: $0, colorIndex: colorIndex)
@@ -411,11 +464,12 @@ final class PetScene: SKScene {
                                                  column: 0,
                                                  colorIndex: colorIndex)
             pet.texture?.filteringMode = .nearest
-            pet.yScale = pixelScale * 0.82
-            pet.xScale = pixelScale * 1.04
+            let s0 = currentPetScale
+            pet.yScale = s0 * 0.82
+            pet.xScale = s0 * 1.04
             let breathe = SKAction.sequence([
-                .scaleY(to: pixelScale * 0.86, duration: 1.4),
-                .scaleY(to: pixelScale * 0.82, duration: 1.4)
+                .scaleY(to: s0 * 0.86, duration: 1.4),
+                .scaleY(to: s0 * 0.82, duration: 1.4)
             ])
             breathe.timingMode = .easeInEaseOut
             pet.run(.repeatForever(breathe), withKey: "anim")
@@ -432,8 +486,8 @@ final class PetScene: SKScene {
                                              column: 0,
                                              colorIndex: colorIndex)
         pet.texture?.filteringMode = .nearest
-        // 从睡姿回来要复位缩放
-        pet.setScale(pixelScale)
+        // 从睡姿回来要复位缩放，并保留当前深度的透视缩放
+        applyDepthScale()
     }
 
     // MARK: - 行为驱动
@@ -493,35 +547,85 @@ final class PetScene: SKScene {
             nextDecisionAt = time + .random(in: 1...2.5)
             return
         }
-        let margin: CGFloat = 60
-        let target = CGPoint(x: .random(in: margin...(size.width - margin)), y: groundY)
+        let target = floor.randomPoint()
         behavior = .wandering(target: target)
-        updateFacing(towardX: target.x)
+        updateFacing(toward: target)
         applyWalkAnimation()
     }
 
-    /// 返回 true 表示已到达
+    /// 朝目标走一步。返回 true 表示已到达。
+    ///
+    /// 二维移动：x 和 y 同时推进。速度按 depth 缩放 —— 远处的宠物
+    /// 视觉上更小，如果用同样的 pt/秒 会显得走得飞快。
     @discardableResult
     private func moveToward(_ target: CGPoint, speed: CGFloat, dt: TimeInterval) -> Bool {
         let dx = target.x - pet.position.x
-        if abs(dx) < 4 { return true }
-        let step = speed * CGFloat(dt)
-        pet.position.x += dx > 0 ? min(step, dx) : max(-step, dx)
-        updateFacing(towardX: target.x)
+        let dy = target.y - pet.position.y
+        let dist = sqrt(dx * dx + dy * dy)
+
+        // 到达阈值也按 depth 缩放，远处判定更宽松
+        let d = floor.depth(atY: pet.position.y)
+        let arriveThreshold = 4 * floor.scaleFactor(atDepth: d)
+        if dist < arriveThreshold { return true }
+
+        let step = speed * floor.scaleFactor(atDepth: d) * CGFloat(dt)
+        if step >= dist {
+            pet.position = floor.clamp(target)
+        } else {
+            let next = CGPoint(x: pet.position.x + dx / dist * step,
+                               y: pet.position.y + dy / dist * step)
+            pet.position = floor.clamp(next)
+        }
+        updateFacing(toward: target)
+        applyDepthScale()
         return false
     }
 
-    private func updateFacing(towardX x: CGFloat) {
-        let newFacing: PetSpriteSheet.Facing = x > pet.position.x ? .right : .left
+    /// 按移动向量选朝向。
+    ///
+    /// 四方向的选择规则：谁的位移分量更大就用那个方向。
+    /// 加了 1.35 的横向偏好系数 —— 斜着走时优先显示侧视，
+    /// 因为侧视帧的动作辨识度明显高于正面/背面（正背视只有 13px 宽）。
+    private func updateFacing(toward target: CGPoint) {
+        let dx = target.x - pet.position.x
+        let dy = target.y - pet.position.y
+
+        let newFacing: PetSpriteSheet.Facing
+        if abs(dx) * 1.35 >= abs(dy) {
+            newFacing = dx >= 0 ? .right : .left
+        } else {
+            // y 增大 = 往里走（远离镜头）= 看到背面
+            newFacing = dy > 0 ? .back : .front
+        }
+
         guard newFacing != facing else { return }
         facing = newFacing
         applyWalkAnimation()
     }
 
+    /// 当前深度下宠物应有的基准缩放。所有动画都要以它为基准，
+    /// 不能写死 pixelScale —— 否则宠物在远处做动作会突然放大。
+    private var currentPetScale: CGFloat {
+        guard let pet else { return pixelScale }
+        return pixelScale * floor.scaleFactor(atDepth: floor.depth(atY: pet.position.y))
+    }
+
+    /// 按当前 depth 调整宠物缩放，制造远近感。
+    private func applyDepthScale() {
+        guard let pet, !isSleeping else { return }
+        let f = floor.scaleFactor(atDepth: floor.depth(atY: pet.position.y))
+        pet.setScale(pixelScale * f)
+    }
+
     private func syncShadow() {
         guard let pet, let shadow else { return }
         // 影子贴在脚底，略微下沉 1 源像素，看起来像压在地上
-        shadow.position = CGPoint(x: pet.position.x, y: petFeetY - pixelScale)
+        let d = floor.depth(atY: pet.position.y)
+        let f = floor.scaleFactor(atDepth: d)
+        shadow.position = CGPoint(x: pet.position.x, y: petFeetY - pixelScale * f)
+        shadow.setScale(f)
+        // 远处影子淡一些
+        shadow.alpha = 0.18 * (0.7 + 0.3 * (1 - d))
     }
 
     // MARK: - 外部触发
@@ -532,7 +636,7 @@ final class PetScene: SKScene {
         touchPoint = nil
         // 睡姿改过 yScale，先复位再放盆，否则 petFeetY 算出来是压扁后的位置
         pet.removeAction(forKey: "anim")
-        pet.setScale(pixelScale)
+        applyDepthScale()
         dropFoodBowl()
         showEmojiBubble("🍖")
         applyEatAnimation { [weak self] in
@@ -556,7 +660,10 @@ final class PetScene: SKScene {
     private var petFeetY: CGFloat {
         let frameH = PetSpriteSheet.frameSize.height        // 32
         let bottomPadding: CGFloat = 5                      // 实测内容底边 y=26
-        return pet.position.y - (frameH / 2 - bottomPadding) * pixelScale
+        // 用节点实际缩放，而不是 pixelScale —— 宠物在远处会被缩小，
+        // 写死 pixelScale 会让影子和食盆在远处脱开脚底。
+        let effectiveScale = pet.yScale
+        return pet.position.y - (frameH / 2 - bottomPadding) * effectiveScale
     }
 
     /// 喂食时在宠物脚边放一个食盆。
@@ -565,7 +672,8 @@ final class PetScene: SKScene {
     private func dropFoodBowl() {
         foodNode?.removeFromParent()
 
-        let u = pixelScale             // 1 源像素 = pixelScale pt
+        // 食盆和宠物同深度，所以用宠物当前缩放，不是 pixelScale
+        let u = currentPetScale        // 1 源像素 = u pt
         let container = SKNode()
 
         /// 以「盆底左边缘」为原点画，方便对齐地面
@@ -590,7 +698,9 @@ final class PetScene: SKScene {
 
         // 放在宠物**面朝的那一侧**，脚底同一水平线上。
         // 距离 = 宠物身体半宽(12源像素) + 盆半宽(7) + 一点间隙 ≈ 20 源像素
-        let side: CGFloat = (facing == .right ? 1 : -1) * u * 20
+        // 朝向正面/背面时放右侧，避免盆压在身上
+        let dir: CGFloat = facing == .left ? -1 : 1
+        let side: CGFloat = dir * u * 20
         container.position = CGPoint(x: pet.position.x + side, y: petFeetY)
         container.zPosition = 11
         container.alpha = 0
@@ -611,7 +721,8 @@ final class PetScene: SKScene {
 
         // 蹦两下。用 moveTo 回到基准 y 而不是 moveBy 抵消位移 ——
         // moveBy 一旦被打断（中途切睡觉/换宠物），宠物会永久停在半空。
-        let baseY = groundY
+        // 基准取**当前位置**，因为宠物可能在地板任意深度，不再固定一条线。
+        let baseY = pet.position.y
         let hop = SKAction.sequence([
             {
                 let a = SKAction.moveTo(y: baseY + pixelScale * 7, duration: 0.16)
@@ -725,7 +836,7 @@ final class PetScene: SKScene {
         if pet.frame.insetBy(dx: -14, dy: -14).contains(location) {
             strokePet()
         } else if !isSleeping {
-            touchPoint = CGPoint(x: location.x, y: groundY)
+            touchPoint = floor.clamp(location)
             applyWalkAnimation()
         }
     }
@@ -750,8 +861,8 @@ final class PetScene: SKScene {
 
         pet.removeAction(forKey: "squash")
         let squash = SKAction.sequence([
-            .scaleX(to: pixelScale * 1.12, y: pixelScale * 0.88, duration: 0.08),
-            .scale(to: pixelScale, duration: 0.14)
+            .scaleX(to: currentPetScale * 1.12, y: currentPetScale * 0.88, duration: 0.08),
+            .scale(to: currentPetScale, duration: 0.14)
         ])
         pet.run(squash, withKey: "squash")
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -770,7 +881,7 @@ final class PetScene: SKScene {
            !pending.frame.insetBy(dx: -20, dy: -20).contains(location) {
             cancelPendingDrag()
         }
-        touchPoint = CGPoint(x: location.x, y: groundY)
+        touchPoint = floor.clamp(location)
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {

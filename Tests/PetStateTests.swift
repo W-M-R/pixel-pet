@@ -86,3 +86,74 @@ final class PetStateTests: XCTestCase {
         XCTAssertEqual(PetSpriteSheet.colorCount, 4)
     }
 }
+
+// MARK: - 地板平面（2.5D 走动）
+
+final class FloorPlaneTests: XCTestCase {
+
+    private func makeFloor() -> FloorPlane {
+        FloorPlane(backY: 280, frontY: 50, width: 400)
+    }
+
+    func testDepthMapping() {
+        let f = makeFloor()
+        XCTAssertEqual(f.depth(atY: 50), 0, accuracy: 0.001, "前缘 = depth 0")
+        XCTAssertEqual(f.depth(atY: 280), 1, accuracy: 0.001, "墙脚 = depth 1")
+        XCTAssertEqual(f.depth(atY: 165), 0.5, accuracy: 0.01, "中点 = depth 0.5")
+        // 越界要钳住
+        XCTAssertEqual(f.depth(atY: -100), 0)
+        XCTAssertEqual(f.depth(atY: 9999), 1)
+    }
+
+    func testDepthYRoundTrip() {
+        let f = makeFloor()
+        for d in stride(from: 0.0, through: 1.0, by: 0.1) {
+            let y = f.y(atDepth: CGFloat(d))
+            XCTAssertEqual(f.depth(atY: y), CGFloat(d), accuracy: 0.001)
+        }
+    }
+
+    /// 远处可行走范围必须比近处窄 —— 这是透视成立的前提
+    func testPerspectiveNarrowsWithDepth() {
+        let f = makeFloor()
+        let near = f.xRange(atDepth: 0)
+        let far = f.xRange(atDepth: 1)
+        let nearWidth = near.upperBound - near.lowerBound
+        let farWidth = far.upperBound - far.lowerBound
+        XCTAssertGreaterThan(nearWidth, farWidth, "远处应该更窄")
+        XCTAssertEqual(nearWidth, 400, accuracy: 0.001, "最近处占满屏宽")
+    }
+
+    /// 远处宠物必须更小
+    func testScaleShrinksWithDepth() {
+        let f = makeFloor()
+        XCTAssertEqual(f.scaleFactor(atDepth: 0), 1, accuracy: 0.001)
+        XCTAssertLessThan(f.scaleFactor(atDepth: 1), f.scaleFactor(atDepth: 0))
+        XCTAssertEqual(f.scaleFactor(atDepth: 1), f.minScaleRatio, accuracy: 0.001)
+    }
+
+    /// clamp 必须把任意点拉回地板内，且尊重该深度的横向范围
+    func testClampKeepsPointOnFloor() {
+        let f = makeFloor()
+        // 远处角落：x 应该被推进梯形内
+        let c = f.clamp(CGPoint(x: 0, y: 280))
+        XCTAssertGreaterThan(c.x, 0, "远处最左应被内缩")
+        XCTAssertEqual(c.y, 280, accuracy: 0.001)
+
+        // 超出上下界
+        XCTAssertEqual(f.clamp(CGPoint(x: 200, y: 9999)).y, 280, accuracy: 0.001)
+        XCTAssertEqual(f.clamp(CGPoint(x: 200, y: -50)).y, 50, accuracy: 0.001)
+    }
+
+    func testRandomPointsAlwaysOnFloor() {
+        let f = makeFloor()
+        for _ in 0..<500 {
+            let p = f.randomPoint()
+            XCTAssertGreaterThanOrEqual(p.y, f.frontY)
+            XCTAssertLessThanOrEqual(p.y, f.backY)
+            let range = f.xRange(atDepth: f.depth(atY: p.y))
+            XCTAssertGreaterThanOrEqual(p.x, range.lowerBound)
+            XCTAssertLessThanOrEqual(p.x, range.upperBound)
+        }
+    }
+}
