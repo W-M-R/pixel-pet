@@ -29,6 +29,12 @@ struct PetHomeView: View {
             .padding(.bottom, 8)
         }
         .onAppear {
+            // 临时测量钩子：PIXELPET_FORCE_AI=1 时强制开 AI 并切英文。
+            // 用于真机内存实测（devicectl 传 UserDefaults 参数不生效）。
+            if ProcessInfo.processInfo.environment["PIXELPET_FORCE_AI"] == "1" {
+                LocalizationManager.shared.setLanguage("en")
+                PetChatEngine.isEnabled = true
+            }
             scene.scaleMode = .resizeFill
             scene.layout = roomStore.layout
             scene.configure(species: store.pet.species, colorIndex: store.pet.colorIndex)

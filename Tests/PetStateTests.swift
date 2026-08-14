@@ -189,28 +189,19 @@ final class FloorPlaneTests: XCTestCase {
 
 final class PetSpriteSheetTests: XCTestCase {
 
-    /// 回归测试：猫的正视/背视只有 3 帧，第 4 格是空的。
-    /// 之前一律按 4 帧播放，导致猫朝前/朝后走时闪出空帧，
-    /// 表现为「身体和头分离」。
-    func testCatFrontBackHaveThreeFrames() {
-        XCTAssertEqual(PetSpriteSheet.frameCount(sheetName: "cat",
-                                                 row: PetSpriteSheet.Facing.front.row), 3)
-        XCTAssertEqual(PetSpriteSheet.frameCount(sheetName: "cat",
-                                                 row: PetSpriteSheet.Facing.back.row), 3)
+    /// 回归测试：正视/背视只有 3 帧，第 4 格不可用。
+    ///
+    /// 猫的第 4 格是空的；狗的第 4 格非空但是另一个姿态
+    /// （侧躺的狗，宽 25-27px vs 正常 11px）。
+    /// 两种都会造成宠物朝前/朝后走时画面突变 —— 即「头尾分离」。
+    func testFrontBackHaveThreeFrames() {
+        XCTAssertEqual(PetSpriteSheet.frameCount(row: PetSpriteSheet.Facing.front.row), 3)
+        XCTAssertEqual(PetSpriteSheet.frameCount(row: PetSpriteSheet.Facing.back.row), 3)
     }
 
-    func testCatSideHasFourFrames() {
-        XCTAssertEqual(PetSpriteSheet.frameCount(sheetName: "cat",
-                                                 row: PetSpriteSheet.Facing.right.row), 4)
-        XCTAssertEqual(PetSpriteSheet.frameCount(sheetName: "cat",
-                                                 row: PetSpriteSheet.Facing.left.row), 4)
-    }
-
-    /// 狗全部 5 行都是 4 帧
-    func testDogAllRowsHaveFourFrames() {
-        for row in 0...4 {
-            XCTAssertEqual(PetSpriteSheet.frameCount(sheetName: "dog", row: row), 4,
-                           "dog r\(row) 应该是 4 帧")
-        }
+    func testSideAndEatHaveFourFrames() {
+        XCTAssertEqual(PetSpriteSheet.frameCount(row: PetSpriteSheet.Facing.right.row), 4)
+        XCTAssertEqual(PetSpriteSheet.frameCount(row: PetSpriteSheet.Facing.left.row), 4)
+        XCTAssertEqual(PetSpriteSheet.frameCount(row: 4), 4, "进食行是 4 帧")
     }
 }

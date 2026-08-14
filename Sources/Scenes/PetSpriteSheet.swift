@@ -88,26 +88,31 @@ enum PetSpriteSheet {
 
     /// 每行实际的有效帧数。
     ///
-    /// ⚠️ **不是所有行都有 4 帧。**实测（解码 PNG 逐格扫 alpha）：
-    /// - cat.png 的 r1(正视) 和 r2(背视) 只有 **3 帧**，第 4 格是空的
-    /// - cat.png 的 r0/r3/r4 有 4 帧
-    /// - dog.png 全部 5 行都是 4 帧
+    /// ⚠️ **正视/背视只有 3 帧，第 4 格不可用。**
     ///
-    /// 之前一律按 4 帧播放，导致猫朝前/朝后走时会闪出一个空帧 ——
-    /// 看起来就像"身体和头分离"。
-    static func frameCount(sheetName: String, row: Int) -> Int {
-        if sheetName == "cat", row == Facing.front.row || row == Facing.back.row {
-            return 3
-        }
-        return columnsPerColor
+    /// 实测（解码 PNG 逐格量内容宽度，只看第一个毛色）：
+    /// ```
+    /// cat r0 侧视: [24,24,23,23] ✅      dog r0 侧视: [26,27,26,24] ✅
+    /// cat r1 正视: [13,13,13, 0] ⚠️      dog r1 正视: [11,11,11,25] ⚠️
+    /// cat r2 背视: [13,13,13, 0] ⚠️      dog r2 背视: [11,11,11,27] ⚠️
+    /// cat r3 侧视: [23,24,24,23] ✅      dog r3 侧视: [26,27,26,24] ✅
+    /// cat r4 进食: [13,13,13,13] ✅      dog r4 进食: [11,11,11,11] ✅
+    /// ```
+    ///
+    /// 猫的第 4 格是**空的**；狗的第 4 格**非空但是另一个姿态**
+    /// （侧躺的狗，宽 25-27px vs 正常 11px）。两种都会造成
+    /// 宠物朝前/朝后走时画面突变 —— 表现为"头尾分离"。
+    ///
+    /// 判定不依赖物种名：这是 LPC sheet 的统一布局，
+    /// 加新宠物也适用。
+    static func frameCount(row: Int) -> Int {
+        (row == Facing.front.row || row == Facing.back.row) ? 3 : columnsPerColor
     }
 
     static func frames(from sheet: SKTexture,
                        action: Action,
-                       colorIndex: Int,
-                       sheetName: String) -> [SKTexture] {
-        let count = frameCount(sheetName: sheetName, row: action.row)
-        return (0..<count).map {
+                       colorIndex: Int) -> [SKTexture] {
+        (0..<frameCount(row: action.row)).map {
             texture(from: sheet, row: action.row, column: $0, colorIndex: colorIndex)
         }
     }
