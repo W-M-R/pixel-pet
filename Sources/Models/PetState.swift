@@ -38,11 +38,18 @@ struct PetState: Codable, Equatable {
     var lastCleanedAt: Date
 
     /// 各维度从「满」降到「空」所需的秒数。
-    /// 现在的值偏快，方便调试时肉眼看到变化；上线前要调慢。
+    ///
+    /// 节奏设计：养成类的关键是「一天打开两三次刚好」。
+    /// - 饱食 12h：早晚各喂一次
+    /// - 心情 18h：一天陪一次就够
+    /// - 清洁 3 天：低频维护，不制造焦虑
+    ///
+    /// 故意让三条线的周期不同步，这样每次打开看到的「最紧急需求」会变化，
+    /// 比三条线一起见底更有意思。
     enum Decay {
-        static let hunger: TimeInterval   = 6 * 3600   // 6 小时饿透
-        static let mood: TimeInterval     = 8 * 3600   // 8 小时无互动降到底
-        static let hygiene: TimeInterval  = 24 * 3600  // 一天该洗了
+        static let hunger: TimeInterval   = 12 * 3600
+        static let mood: TimeInterval     = 18 * 3600
+        static let hygiene: TimeInterval  = 72 * 3600
     }
 
     init(species: PetSpecies = .cat,
@@ -75,11 +82,14 @@ struct PetState: Codable, Equatable {
         remaining(since: lastCleanedAt, span: Decay.hygiene, now: now)
     }
 
-    /// 精力用「距上次玩耍的时间」做反向映射：刚玩过累，休息久了精力足。
-    /// 这样不用额外存一个时间戳。
+    /// 精力：刚玩过会累，休息一段就恢复。
+    ///
+    /// 注意这里的语义和上面三条相反 —— 时间越久精力越**足**。
+    /// 所以宠物只会在「刚玩累」的那 40 分钟里打瞌睡，
+    /// 而不是放置越久越困（那样反直觉）。
     func energy(at now: Date = Date()) -> Double {
         let rested = now.timeIntervalSince(lastPlayedAt)
-        return clamp(rested / (2 * 3600))
+        return clamp(rested / (40 * 60))
     }
 
     /// 综合健康度，给 UI 一个总览

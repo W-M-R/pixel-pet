@@ -94,6 +94,32 @@ enum PetSpriteSheet {
         }
     }
 
+    /// 睡觉 sheet（自绘补的，主 sheet 里确认没有 sleep 帧）。
+    /// 布局 4 列(毛色) × 2 行(呼气/吸气)，每格 32×32。
+    /// 生成脚本 tools/make_sleep.py —— 调色板从主 sheet 自动提取，
+    /// 保证 4 种毛色与走路帧一致。
+    enum Sleep {
+        static let columns = 4
+        static let rows = 2
+    }
+
+    static func sleepFrames(from sheet: SKTexture, colorIndex: Int) -> [SKTexture] {
+        let sheetW = sheet.size().width
+        let sheetH = sheet.size().height
+        guard sheetW > 0, sheetH > 0 else { return [] }
+
+        return (0..<Sleep.rows).map { row in
+            let flippedRow = Sleep.rows - row - 1   // Y 翻转
+            let rect = CGRect(x: CGFloat(colorIndex) * frameSize.width / sheetW,
+                              y: CGFloat(flippedRow) * frameSize.height / sheetH,
+                              width: frameSize.width / sheetW,
+                              height: frameSize.height / sheetH)
+            let tex = SKTexture(rect: rect, in: sheet)
+            tex.filteringMode = .nearest
+            return tex
+        }
+    }
+
     static func loadSheet(named name: String) -> SKTexture? {
         if let url = Bundle.main.url(forResource: name, withExtension: "png"),
            let image = UIImage(contentsOfFile: url.path) {

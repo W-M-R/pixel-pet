@@ -18,6 +18,7 @@ final class PetScene: SKScene {
     // MARK: - 状态
 
     private var sheet: SKTexture?
+    private var sleepSheet: SKTexture?
     private var roomSheet: SKTexture?
     private var emoteSheet: SKTexture?
     private var pet: SKSpriteNode!
@@ -45,6 +46,19 @@ final class PetScene: SKScene {
     private var touchPoint: CGPoint?
     private let motion = CMMotionManager()
 
+    // MARK: - 家具
+
+    private var furnitureNodes: [SKSpriteNode] = []
+    var layout: RoomLayout = .default
+
+    /// 正在拖动的家具。长按 0.35s 才进入拖动，避免和「点空地让宠物走过去」冲突。
+    private var draggingNode: SKSpriteNode?
+    private var pendingDragNode: SKSpriteNode?
+    private var dragArmTimer: Timer?
+
+    /// 家具被移动后回调，交给 RoomStore 持久化
+    var onFurnitureMoved: ((String, Double) -> Void)?
+
     /// 地面高度（场景底部往上留一点，宠物在这条线上活动）
     private var groundY: CGFloat { size.height * 0.28 }
 
@@ -63,11 +77,32 @@ final class PetScene: SKScene {
         motion.stopAccelerometerUpdates()
     }
 
+    /// 布局变了以后重建房间（改布局/重置时调用）。
+    /// 只重建家具，不动宠物，免得打断它当前的行为。
+    func rebuildRoom() {
+        for node in furnitureNodes { node.removeFromParent() }
+        furnitureNodes.removeAll()
+        guard let roomSheet, size.width > 1 else { return }
+        let scale = pixelScale * 0.8
+        for slot in layout.slots {
+            guard let item = RoomSpriteSheet.Furniture(rawValue: slot.id) else { continue }
+            let node = SKSpriteNode(texture: RoomSpriteSheet.furnitureTexture(from: roomSheet, item))
+            node.texture?.filteringMode = .nearest
+            node.setScale(scale * slot.scaleMul)
+            node.position = CGPoint(x: size.width * slot.xRatio, y: groundY + slot.yOffset)
+            node.zPosition = slot.z
+            node.name = slot.id
+            addChild(node)
+            furnitureNodes.append(node)
+        }
+    }
+
     func configure(species: PetSpecies, colorIndex: Int) {
         guard species != self.species || colorIndex != self.colorIndex || pet == nil else { return }
         self.species = species
         self.colorIndex = colorIndex
         sheet = PetSpriteSheet.loadSheet(named: species.sheetName)
+        sleepSheet = PetSpriteSheet.loadSheet(named: "\(species.sheetName)_sleep")
         if pet != nil { applyWalkAnimation() }
     }
 
@@ -76,6 +111,7 @@ final class PetScene: SKScene {
         guard size.width > 1 else { return }
 
         sheet = PetSpriteSheet.loadSheet(named: species.sheetName)
+        sleepSheet = PetSpriteSheet.loadSheet(named: "\(species.sheetName)_sleep")
         roomSheet = RoomSpriteSheet.loadSheet(named: "house_objects")
         emoteSheet = RoomSpriteSheet.loadSheet(named: "emotes")
 
@@ -111,39 +147,25 @@ final class PetScene: SKScene {
 
     // MARK: - 房间
 
-    /// 家具摆放。坐标用屏宽比例，适配不同机型。
-    /// 地毯压在地面线上，其余靠墙贴地。
+    /// 家具摆放。位置来自 RoomStore（屏宽比例），支持长按拖动。
     private func buildRoom() {
         buildFloor()
         guard let roomSheet else { return }
+        furnitureNodes.removeAll()
         let scale = pixelScale * 0.8   // 家具比宠物略小一点，避免抢主角
 
-        struct Placement {
-            let item: RoomSpriteSheet.Furniture
-            let xRatio: CGFloat
-            let yOffset: CGFloat
-            let z: CGFloat
-            var scaleMul: CGFloat = 1
-        }
-
-        // z < 2 在宠物身后。家具都靠墙贴地，中间留出活动区。
-        // yOffset 是相对地面线，家具底边要落在线上，所以按各自高度往上抬一半。
-        let placements: [Placement] = [
-            Placement(item: .rug,        xRatio: 0.50, yOffset: -16, z: 0, scaleMul: 1.1),
-            Placement(item: .bed,        xRatio: 0.15, yOffset: 30,  z: 1, scaleMul: 0.85),
-            Placement(item: .nightstand, xRatio: 0.33, yOffset: 14,  z: 1, scaleMul: 0.85),
-            Placement(item: .bookshelf,  xRatio: 0.88, yOffset: 34,  z: 1, scaleMul: 0.85),
-            Placement(item: .plant,      xRatio: 0.71, yOffset: 14,  z: 1, scaleMul: 0.85)
-        ]
-
-        for p in placements {
-            let tex = RoomSpriteSheet.furnitureTexture(from: roomSheet, p.item)
+        for slot in layout.slots {
+            guard let item = RoomSpriteSheet.Furniture(rawValue: slot.id) else { continue }
+            let tex = RoomSpriteSheet.furnitureTexture(from: roomSheet, item)
             let node = SKSpriteNode(texture: tex)
             node.texture?.filteringMode = .nearest
-            node.setScale(scale * p.scaleMul)
-            node.position = CGPoint(x: size.width * p.xRatio, y: groundY + p.yOffset)
-            node.zPosition = p.z
+            node.setScale(scale * slot.scaleMul)
+            node.position = CGPoint(x: size.width * slot.xRatio,
+                                    y: groundY + slot.yOffset)
+            node.zPosition = slot.z
+            node.name = slot.id
             addChild(node)
+            furnitureNodes.append(node)
         }
     }
 
@@ -215,27 +237,43 @@ final class PetScene: SKScene {
         pet.run(.sequence([.repeat(chew, count: 4), .run(completion)]), withKey: "anim")
     }
 
-    /// 睡觉姿态。sheet 里**确认没有** sleep 帧（r4 是咀嚼动画），
-    /// 所以这里用侧视帧压扁 + 缓慢呼吸缩放模拟趴着睡。
-    /// 这是临时方案，正解是自绘 2-3 帧趴卧图（见 ROADMAP）。
+    /// 睡觉姿态。主 sheet 里确认没有 sleep 帧（r4 是咀嚼），
+    /// 所以用自绘的趴卧 sheet（tools/make_sleep.py 生成，调色板取自主 sheet）。
+    /// 若自绘 sheet 缺失则回退到「侧视帧压扁 + 呼吸缩放」。
     private func applySleepPose() {
-        guard let sheet, let pet else { return }
+        guard let pet else { return }
         pet.removeAction(forKey: "anim")
-        pet.texture = PetSpriteSheet.texture(from: sheet,
-                                             row: PetSpriteSheet.Facing.right.row,
-                                             column: 0,
-                                             colorIndex: colorIndex)
-        pet.texture?.filteringMode = .nearest
-        // 压扁一点，看起来像趴下
-        pet.yScale = pixelScale * 0.82
-        pet.xScale = pixelScale * 1.04
+        pet.setScale(pixelScale)
 
-        let breathe = SKAction.sequence([
-            .scaleY(to: pixelScale * 0.86, duration: 1.4),
-            .scaleY(to: pixelScale * 0.82, duration: 1.4)
-        ])
-        breathe.timingMode = .easeInEaseOut
-        pet.run(.repeatForever(breathe), withKey: "anim")
+        let frames = sleepSheet.map {
+            PetSpriteSheet.sleepFrames(from: $0, colorIndex: colorIndex)
+        } ?? []
+
+        if frames.count >= 2 {
+            pet.texture = frames[0]
+            pet.texture?.filteringMode = .nearest
+            // 呼吸节奏放慢，2.2s 一次起伏
+            let breathe = SKAction.animate(with: frames,
+                                           timePerFrame: 1.1,
+                                           resize: false,
+                                           restore: false)
+            pet.run(.repeatForever(breathe), withKey: "anim")
+        } else if let sheet {
+            // 回退方案
+            pet.texture = PetSpriteSheet.texture(from: sheet,
+                                                 row: PetSpriteSheet.Facing.right.row,
+                                                 column: 0,
+                                                 colorIndex: colorIndex)
+            pet.texture?.filteringMode = .nearest
+            pet.yScale = pixelScale * 0.82
+            pet.xScale = pixelScale * 1.04
+            let breathe = SKAction.sequence([
+                .scaleY(to: pixelScale * 0.86, duration: 1.4),
+                .scaleY(to: pixelScale * 0.82, duration: 1.4)
+            ])
+            breathe.timingMode = .easeInEaseOut
+            pet.run(.repeatForever(breathe), withKey: "anim")
+        }
     }
 
     /// 站住时把动画停在第一帧。sheet 里没有独立的 idle 动作，
@@ -480,6 +518,17 @@ final class PetScene: SKScene {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let location = touches.first?.location(in: self), pet != nil else { return }
+
+        // 先看是不是按在家具上 —— 长按才拖，短按当作点地面
+        if let node = furnitureHit(at: location) {
+            pendingDragNode = node
+            dragArmTimer?.invalidate()
+            dragArmTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { [weak self] _ in
+                guard let self, let n = self.pendingDragNode else { return }
+                self.beginDrag(n)
+            }
+        }
+
         if pet.frame.insetBy(dx: -14, dy: -14).contains(location) {
             // 直接戳到宠物 → 抚摸反馈
             onPetTouched?()
@@ -497,15 +546,74 @@ final class PetScene: SKScene {
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let location = touches.first?.location(in: self) else { return }
+
+        if let dragging = draggingNode {
+            dragging.position.x = min(size.width * 0.94,
+                                      max(size.width * 0.06, location.x))
+            return
+        }
+        // 手指移开了原位置就取消待拖动，避免误触发
+        if let pending = pendingDragNode,
+           !pending.frame.insetBy(dx: -20, dy: -20).contains(location) {
+            cancelPendingDrag()
+        }
         touchPoint = CGPoint(x: location.x, y: groundY)
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        endDrag()
         touchPoint = nil
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        endDrag()
         touchPoint = nil
+    }
+
+    // MARK: - 家具拖动
+
+    /// 命中检测按 z 从高到低，这样叠在上面的家具优先被抓到。
+    /// 地毯(z=0)故意排除 —— 它铺在地上，拖它体验很怪。
+    private func furnitureHit(at point: CGPoint) -> SKSpriteNode? {
+        furnitureNodes
+            .filter { $0.name != RoomSpriteSheet.Furniture.rug.rawValue }
+            .sorted { $0.zPosition > $1.zPosition }
+            .first { $0.frame.contains(point) }
+    }
+
+    private func beginDrag(_ node: SKSpriteNode) {
+        draggingNode = node
+        pendingDragNode = nil
+        touchPoint = nil          // 拖家具时宠物不要跟着走
+        node.removeAction(forKey: "lift")
+        node.run(.group([
+            .scale(to: node.xScale * 1.08, duration: 0.12),
+            .fadeAlpha(to: 0.85, duration: 0.12)
+        ]), withKey: "lift")
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    private func endDrag() {
+        dragArmTimer?.invalidate()
+        dragArmTimer = nil
+        pendingDragNode = nil
+
+        guard let node = draggingNode else { return }
+        draggingNode = nil
+        node.removeAction(forKey: "lift")
+        node.run(.group([
+            .scale(to: node.xScale / 1.08, duration: 0.12),
+            .fadeAlpha(to: 1, duration: 0.12)
+        ]))
+        if let id = node.name, size.width > 0 {
+            onFurnitureMoved?(id, Double(node.position.x / size.width))
+        }
+    }
+
+    private func cancelPendingDrag() {
+        dragArmTimer?.invalidate()
+        dragArmTimer = nil
+        pendingDragNode = nil
     }
 
     // MARK: - 摇晃

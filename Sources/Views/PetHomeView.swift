@@ -3,6 +3,7 @@ import SpriteKit
 
 struct PetHomeView: View {
     @State private var store = PetStore()
+    @State private var roomStore = RoomStore()
     @State private var scene = PetScene()
     @State private var showDebug = false
     @Environment(\.scenePhase) private var scenePhase
@@ -28,8 +29,13 @@ struct PetHomeView: View {
         }
         .onAppear {
             scene.scaleMode = .resizeFill
+            scene.layout = roomStore.layout
             scene.configure(species: store.pet.species, colorIndex: store.pet.colorIndex)
             scene.onPetTouched = { store.play() }
+            scene.onFurnitureMoved = { id, ratio in
+                roomStore.move(id: id, toXRatio: ratio)
+                scene.layout = roomStore.layout
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.refresh() }
@@ -45,7 +51,11 @@ struct PetHomeView: View {
             scene.configure(species: store.pet.species, colorIndex: c)
         }
         .sheet(isPresented: $showDebug) {
-            DebugPanel(store: store)
+            DebugPanel(store: store) {
+                roomStore.reset()
+                scene.layout = roomStore.layout
+                scene.rebuildRoom()
+            }
         }
         .preferredColorScheme(.dark)
     }
@@ -162,6 +172,7 @@ private struct ActionButton: View {
 /// 数值应该立刻跟着掉，而不需要 app 在后台跑任何东西。
 private struct DebugPanel: View {
     let store: PetStore
+    let onResetRoom: () -> Void
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -189,6 +200,11 @@ private struct DebugPanel: View {
                             Text("毛色 \(i + 1)").tag(i)
                         }
                     }
+                }
+                Section("房间") {
+                    Text("长按家具可拖动位置")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    Button("重置家具布局") { onResetRoom() }
                 }
                 Section {
                     Button("重置状态", role: .destructive) { store.resetAll() }

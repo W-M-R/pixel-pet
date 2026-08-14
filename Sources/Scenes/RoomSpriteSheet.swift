@@ -11,7 +11,7 @@ enum RoomSpriteSheet {
     /// 所以这里用像素矩形而不是格子索引，尺寸是放大后逐个看出来的。
     /// 矩形是逐个放大核对过的（见 ASSET-PROVENANCE/home-objects）。
     /// 注意 (96,32) 和 (128,32) 两格是空的，别往那儿取。
-    enum Furniture: CaseIterable {
+    enum Furniture: String, CaseIterable {
         case bed          // 双人床，2×2
         case nightstand   // 床头柜
         case sofa         // 沙发，2×1

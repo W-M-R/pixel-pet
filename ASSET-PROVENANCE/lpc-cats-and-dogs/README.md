@@ -56,3 +56,18 @@ requirements, at any time")，而 Apple 审核指南 5.2.1 要求证明有权使
 ## ⚠️ 注意：预览图不可用于商店素材
 OGA FAQ：「Unless otherwise noted, assume the previews are 'All rights reserved'」
 App 图标与 App Store 截图只能使用实际下载到的 cat.png / dog.png。
+
+## 衍生素材：cat_sleep.png / dog_sleep.png
+
+主 sheet 里**没有** sleep 帧（r4 经放大核对确认是咀嚼动画）。
+趴卧帧由 `tools/make_sleep.py` 生成：
+
+- 形状为**手绘点阵**（不是从原帧几何变形——试过压缩躯干，
+  像素画形状信息太密，算法变形会切断轮廓）
+- **调色板从主 sheet 自动提取**：读该毛色侧视帧的高频色，
+  按亮度分出 亮/中/暗，保证 4 种毛色与走路帧一致
+- 底边对齐 y=26，与走路帧一致，否则趴下时会悬空偏小
+- 布局 4 列(毛色) × 2 行(呼气/吸气)，每格 32×32
+
+授权归属：形状为本项目原创，仅调色板取自 OGA-BY 素材。
+按 OGA-BY 3.0 已在 Credits 声明修改。
