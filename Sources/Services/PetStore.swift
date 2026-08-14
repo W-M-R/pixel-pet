@@ -53,6 +53,25 @@ final class PetStore {
         persist()
     }
 
+    /// 抚摸。也算陪玩（涨心情），但独立成一个方法，
+    /// 因为要加冷却 —— 连续戳不该无限刷心情。
+    ///
+    /// 注意：抚摸**不该**让宠物犯困。睡觉由 PetState.isDrowsy 的
+    /// 自然作息决定，和这里无关。
+    @discardableResult
+    func stroke(cooldown: TimeInterval = 1.5) -> Bool {
+        let now = Date()
+        if let last = lastStrokeAt, now.timeIntervalSince(last) < cooldown {
+            return false        // 冷却中
+        }
+        lastStrokeAt = now
+        pet.lastPlayedAt = now
+        persist()
+        return true
+    }
+
+    private var lastStrokeAt: Date?
+
     func clean() {
         pet.lastCleanedAt = Date()
         persist()

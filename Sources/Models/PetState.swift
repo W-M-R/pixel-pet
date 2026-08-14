@@ -82,14 +82,22 @@ struct PetState: Codable, Equatable {
         remaining(since: lastCleanedAt, span: Decay.hygiene, now: now)
     }
 
-    /// 精力：刚玩过会累，休息一段就恢复。
+    /// 是否在打瞌睡。
     ///
-    /// 注意这里的语义和上面三条相反 —— 时间越久精力越**足**。
-    /// 所以宠物只会在「刚玩累」的那 40 分钟里打瞌睡，
-    /// 而不是放置越久越困（那样反直觉）。
-    func energy(at now: Date = Date()) -> Double {
-        let rested = now.timeIntervalSince(lastPlayedAt)
-        return clamp(rested / (40 * 60))
+    /// ⚠️ 这里曾经有个很糟的设计：用「距上次玩耍的时间」算精力，
+    /// 结果每次**抚摸**宠物都会调 play() 刷新 lastPlayedAt，
+    /// 于是精力归零、宠物立刻趴下睡 —— 表现为「一点它就睡觉」。
+    ///
+    /// 睡觉必须和互动解耦。改成按**自然作息**：宠物在一天里有固定的
+    /// 午休和夜间时段会犯困，跟用户做了什么无关。互动只影响
+    /// 饱食/心情/清洁三条线。
+    ///
+    /// 用真实时间而不是 app 内计时器，是因为 iOS 没有后台定时器，
+    /// 而「现在几点」永远能算准。
+    func isDrowsy(at now: Date = Date()) -> Bool {
+        let hour = Calendar.current.component(.hour, from: now)
+        // 深夜 23:00–06:59 睡觉；午后 14:00–15:59 打个盹
+        return hour >= 23 || hour < 7 || (hour >= 14 && hour < 16)
     }
 
     /// 综合健康度，给 UI 一个总览
@@ -133,6 +141,8 @@ enum PetNeed: String, CaseIterable {
 
 extension PetState {
     /// 取最紧急的需求。阈值 0.35 是手调的，之后可以按体感改。
+    ///
+    /// 顺序：生理需求优先于困倦 —— 饿着的时候不该只显示「困了」。
     func dominantNeed(at now: Date = Date()) -> PetNeed {
         let candidates: [(PetNeed, Double)] = [
             (.hungry, satiety(at: now)),
@@ -142,7 +152,7 @@ extension PetState {
         if let worst = candidates.min(by: { $0.1 < $1.1 }), worst.1 < 0.35 {
             return worst.0
         }
-        if energy(at: now) < 0.2 { return .sleepy }
+        if isDrowsy(at: now) { return .sleepy }
         return .content
     }
 }

@@ -757,18 +757,38 @@ final class PetScene: SKScene {
         }
 
         if pet.frame.insetBy(dx: -14, dy: -14).contains(location) {
-            // 直接戳到宠物 → 抚摸反馈
-            onPetTouched?()
-            showEmote(.heart)
-            let squash = SKAction.sequence([
-                .scaleX(to: pixelScale * 1.1, y: pixelScale * 0.9, duration: 0.08),
-                .scale(to: pixelScale, duration: 0.12)
-            ])
-            pet.run(squash)
-        } else {
+            strokePet()
+        } else if !isSleeping {
             touchPoint = CGPoint(x: location.x, y: groundY)
             applyWalkAnimation()
         }
+    }
+
+    /// 戳到宠物：抚摸反馈。
+    ///
+    /// 睡着时戳会把它叫醒 —— 必须先退出 .sleeping，
+    /// 否则挤压动画的 `scale(to: pixelScale)` 会覆盖睡姿的压扁状态，
+    /// 造成「状态是睡着、外观是站着」的不一致。
+    private func strokePet() {
+        guard let pet else { return }
+
+        if isSleeping {
+            behavior = .idle
+            nextDecisionAt = 0
+            applyIdlePose()
+            showEmote(.question)      // 被叫醒，一脸问号
+        } else {
+            showEmote(.heart)
+        }
+        onPetTouched?()
+
+        pet.removeAction(forKey: "squash")
+        let squash = SKAction.sequence([
+            .scaleX(to: pixelScale * 1.12, y: pixelScale * 0.88, duration: 0.08),
+            .scale(to: pixelScale, duration: 0.14)
+        ])
+        pet.run(squash, withKey: "squash")
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {

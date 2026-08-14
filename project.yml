@@ -21,6 +21,18 @@ settings:
     SWIFT_EMIT_LOC_STRINGS: YES
 
 targets:
+  PixelPetTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: PixelPet
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.wmr.pixelpet.tests
+        GENERATE_INFOPLIST_FILE: YES
+
   PixelPet:
     type: application
     platform: iOS

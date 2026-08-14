@@ -31,7 +31,7 @@ struct PetHomeView: View {
             scene.scaleMode = .resizeFill
             scene.layout = roomStore.layout
             scene.configure(species: store.pet.species, colorIndex: store.pet.colorIndex)
-            scene.onPetTouched = { store.play() }
+            scene.onPetTouched = { store.stroke() }
             scene.onFurnitureMoved = { id, ratio in
                 roomStore.move(id: id, toXRatio: ratio)
                 scene.layout = roomStore.layout
@@ -41,8 +41,9 @@ struct PetHomeView: View {
             if phase == .active { store.refresh() }
         }
         .onChange(of: store.tick) { _, _ in
-            // 精力见底就趴下睡，恢复了自己起来
-            scene.setSleeping(store.pet.energy(at: store.tick) < 0.12)
+            // 按自然作息决定睡不睡，与用户互动无关。
+            // 曾经用「距上次玩耍的时间」判断，导致一摸就睡（见 PetState.isDrowsy）。
+            scene.setSleeping(store.pet.isDrowsy(at: store.tick))
         }
         .onChange(of: store.pet.species) { _, s in
             scene.configure(species: s, colorIndex: store.pet.colorIndex)
