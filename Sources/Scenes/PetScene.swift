@@ -246,23 +246,54 @@ final class PetScene: SKScene {
         floor.zPosition = -6
         addChild(floor)
 
-        // 地板条：横向木纹，间距随纵向递增，制造透视纵深
-        var y: CGFloat = base - u * 3
-        var gap: CGFloat = u * 3
-        while y > 0 {
-            let plank = SKSpriteNode(color: Palette.floorSeam,
-                                     size: CGSize(width: size.width, height: u))
-            plank.anchorPoint = CGPoint(x: 0, y: 0)
-            plank.position = CGPoint(x: 0, y: y)
-            plank.zPosition = -5
-            addChild(plank)
-            y -= gap
-            gap += u * 0.5                  // 越靠下间距越大 = 越近
-        }
+        // 地板：横向木板 + 竖向错缝。
+        //
+        // 纵深全靠这个纹理表现 —— 板宽随距离递增（远处密、近处疏），
+        // 这是真实透视里地板的样子。比画梯形轮廓自然得多：
+        // 真实房间的地板边缘不会明显收缩，收缩了就像漏斗。
+        var y: CGFloat = base
+        var plankH: CGFloat = u * 5          // 最远处的板最窄
+        var rowIndex = 0
 
-        // 侧墙：把地板收成梯形，让「可走范围远处窄」在视觉上成立。
-        // 不画这两块的话，宠物走到远处会离屏幕边缘很远，看着像被无形墙挡住。
-        drawSideWalls(u: u)
+        while y > 0 {
+            let h = min(plankH, y)
+            let rowY = y - h
+
+            // 隔行换深浅，木板质感
+            if rowIndex % 2 == 1 {
+                let band = SKSpriteNode(color: Palette.floorAlt,
+                                        size: CGSize(width: size.width, height: h))
+                band.anchorPoint = CGPoint(x: 0, y: 0)
+                band.position = CGPoint(x: 0, y: rowY)
+                band.zPosition = -5.5
+                addChild(band)
+            }
+
+            // 板缝
+            let seam = SKSpriteNode(color: Palette.floorSeam,
+                                    size: CGSize(width: size.width, height: u))
+            seam.anchorPoint = CGPoint(x: 0, y: 0)
+            seam.position = CGPoint(x: 0, y: rowY)
+            seam.zPosition = -5
+            addChild(seam)
+
+            // 竖向错缝：每行的短竖线错开半格，避免看起来像跑道
+            let seg = u * 48
+            var vx = (CGFloat(rowIndex % 2) * seg / 2)
+            while vx < size.width {
+                let v = SKSpriteNode(color: Palette.floorSeam,
+                                     size: CGSize(width: u, height: h))
+                v.anchorPoint = CGPoint(x: 0, y: 0)
+                v.position = CGPoint(x: (vx / u).rounded() * u, y: rowY)
+                v.zPosition = -5
+                addChild(v)
+                vx += seg
+            }
+
+            y = rowY
+            plankH += u * 2.2                // 越靠近镜头板越宽
+            rowIndex += 1
+        }
 
         // ── 踢脚线：坐在墙脚线上，两像素高，亮暗两色做立体感 ──
         let skirtDark = SKSpriteNode(color: Palette.skirtingDark,
@@ -278,47 +309,6 @@ final class PetScene: SKScene {
         skirtLite.position = CGPoint(x: 0, y: base + u)
         skirtLite.zPosition = 0.5
         addChild(skirtLite)
-    }
-
-    /// 左右侧墙。用阶梯状的像素块逼近斜边 —— 像素画里不画抗锯齿斜线，
-    /// 靠台阶表现透视，这样和其余部分的像素密度一致。
-    ///
-    /// 台阶的斜率直接取自 FloorPlane.perspectiveInset，
-    /// 所以视觉边界和实际可行走范围永远吻合。
-    private func drawSideWalls(u: CGFloat) {
-        let f = floor
-        // 每级 8 源像素。3 源像素时台阶太密，看着像锯齿而不是透视墙。
-        let steps = max(3, Int((f.backY - f.frontY) / (u * 8)))
-
-        for i in 0..<steps {
-            let d0 = CGFloat(i) / CGFloat(steps)
-            let d1 = CGFloat(i + 1) / CGFloat(steps)
-            let y0 = f.y(atDepth: d0)
-            let y1 = f.y(atDepth: d1)
-            let h = max(u, y1 - y0)
-            // 用该段较远端的内缩量，保证墙不会盖住可行走区
-            let inset = (f.xRange(atDepth: d1).lowerBound / u).rounded() * u
-            guard inset > 0 else { continue }
-
-            for side in 0..<2 {
-                let x = side == 0 ? 0 : size.width - inset
-                let yy = (y0 / u).rounded() * u
-                let n = SKSpriteNode(color: Palette.sideWall,
-                                     size: CGSize(width: inset, height: h))
-                n.anchorPoint = CGPoint(x: 0, y: 0)
-                n.position = CGPoint(x: x, y: yy)
-                n.zPosition = -4.5
-                addChild(n)
-
-                // 内侧竖边描一条暗线，台阶轮廓更清楚
-                let edge = SKSpriteNode(color: Palette.sideWallEdge,
-                                        size: CGSize(width: u, height: h))
-                edge.anchorPoint = CGPoint(x: 0, y: 0)
-                edge.position = CGPoint(x: side == 0 ? inset - u : size.width - inset, y: yy)
-                edge.zPosition = -4.4
-                addChild(edge)
-            }
-        }
     }
 
     /// 墙上的装饰：窗、挂画、壁灯。
@@ -386,12 +376,10 @@ final class PetScene: SKScene {
         static let wallStripe   = SKColor(red: 0.82, green: 0.755, blue: 0.655, alpha: 1)
         // 地板：木色，和墙有明确冷暖/明度区分
         static let floor        = SKColor(red: 0.62, green: 0.44, blue: 0.31, alpha: 1)
-        static let floorSeam    = SKColor(red: 0.52, green: 0.35, blue: 0.24, alpha: 1)
+        static let floorSeam    = SKColor(red: 0.50, green: 0.34, blue: 0.23, alpha: 1)
+        static let floorAlt     = SKColor(red: 0.58, green: 0.41, blue: 0.29, alpha: 1)
         static let skirtingDark = SKColor(red: 0.38, green: 0.26, blue: 0.19, alpha: 1)
         static let skirtingLite = SKColor(red: 0.72, green: 0.56, blue: 0.42, alpha: 1)
-        // 侧墙：比地板暗，把地板收成梯形
-        static let sideWall     = SKColor(red: 0.46, green: 0.33, blue: 0.24, alpha: 1)
-        static let sideWallEdge = SKColor(red: 0.36, green: 0.25, blue: 0.18, alpha: 1)
         // 窗外夜景
         static let sky          = SKColor(red: 0.14, green: 0.19, blue: 0.36, alpha: 1)
         static let hill         = SKColor(red: 0.17, green: 0.27, blue: 0.31, alpha: 1)
