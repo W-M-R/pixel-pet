@@ -271,7 +271,7 @@ final class PetScene: SKScene {
         addChild(skirtLite)
     }
 
-    /// 墙上的装饰：窗、挂画、壁灯、侧视的猫窝和食盆。
+    /// 墙上的装饰：窗、挂画、壁灯。
     ///
     /// 全部手绘像素块，尺寸严格取 u 的整数倍。**都是侧视/正视**，
     /// 和宠物的视角一致 —— 这是不用现成家具包的原因。
@@ -327,85 +327,6 @@ final class PetScene: SKScene {
             block(lx + u - gw / 2, ly - u * CGFloat(i * 3), gw, u * 3,
                   Palette.lampGlow.withAlphaComponent(0.10 - CGFloat(i) * 0.03), -3.25)
         }
-
-        buildPetCorner(base: base, u: u)
-    }
-
-    /// 宠物角落：侧视猫窝 + 毛线球。
-    ///
-    /// ⚠️ 第一版是用矩形色块拼的（垫身一块、靠背两块、球一个 4×4 方块），
-    /// 结果谁也认不出来 —— 球太小没有轮廓，猫窝的靠背只有 3px 宽读不出形状。
-    /// 改成真正的像素画点阵：有深色描边、有高光、有可辨识的剪影。
-    private func buildPetCorner(base: CGFloat, u: CGFloat) {
-
-        /// 把点阵画成节点。图例见各自的 art 定义。
-        func draw(_ art: [String], palette: [Character: SKColor],
-                  atX x: CGFloat, footY y: CGFloat, z: CGFloat) {
-            let h = CGFloat(art.count)
-            let container = SKNode()
-            for (row, line) in art.enumerated() {
-                for (col, ch) in line.enumerated() {
-                    guard let color = palette[ch] else { continue }
-                    let n = SKSpriteNode(color: color, size: CGSize(width: u, height: u))
-                    n.anchorPoint = CGPoint(x: 0, y: 0)
-                    // 点阵行号自上而下，SpriteKit y 自下而上
-                    n.position = CGPoint(x: CGFloat(col) * u,
-                                         y: (h - CGFloat(row) - 1) * u)
-                    container.addChild(n)
-                }
-            }
-            let w = CGFloat(art.map(\.count).max() ?? 0) * u
-            container.position = CGPoint(x: ((x - w / 2) / u).rounded() * u,
-                                         y: (y / u).rounded() * u)
-            container.zPosition = z
-            addChild(container)
-        }
-
-        // ── 猫窝：碗状，两侧翘起 + 中间凹陷 ──
-        // 第一版画成扁平的垫子（22×9），看着像块地砖。
-        // 关键是要有**两侧明显翘起的边**和凹下去的内衬，才读得出是「窝」。
-        // O 描边 / B 垫身 / H 高光 / S 内衬阴影
-        let bedArt = [
-            "...OO..........OO...",
-            "..OHHO........OHHO..",
-            ".OHHBBO......OBBHHO.",
-            ".OHBBBBO....OBBBBHO.",
-            ".OHBBSSSOOOOSSSBBHO.",
-            ".OHBSSSSSSSSSSSSBHO.",
-            ".OBBSSSSSSSSSSSSBBO.",
-            "OBBBBBBBBBBBBBBBBBBO",
-            "OBBBBBBBBBBBBBBBBBBO",
-            ".OOOOOOOOOOOOOOOOOO."
-        ]
-        draw(bedArt,
-             palette: ["O": Palette.bedEdge,
-                       "B": Palette.bedBase,
-                       "H": Palette.bedHilite,
-                       "S": Palette.bedInner],
-             atX: size.width * 0.16,
-             footY: groundY - u * 5,
-             z: 0.8)
-
-        // ── 毛线球：圆形 + 缠绕线条 ──
-        // O 描边 / R 球体 / L 亮线 / H 高光
-        let ballArt = [
-            "..OOOO..",
-            ".ORRLRO.",
-            "ORHRRLRO",
-            "ORRLRRRO",
-            "ORLRRRRO",
-            "ORRRLRRO",
-            ".ORRRRO.",
-            "..OOOO.."
-        ]
-        draw(ballArt,
-             palette: ["O": Palette.ballEdge,
-                       "R": Palette.ball,
-                       "L": Palette.ballYarn,
-                       "H": Palette.ballHilite],
-             atX: size.width * 0.85,
-             footY: groundY - u * 5,
-             z: 0.8)
     }
 
     /// 房间配色。集中放一处，方便整体调色而不用满场景找魔数。
@@ -432,17 +353,6 @@ final class PetScene: SKScene {
         // 壁灯
         static let lampShade    = SKColor(red: 0.90, green: 0.74, blue: 0.44, alpha: 1)
         static let lampGlow     = SKColor(red: 1.00, green: 0.92, blue: 0.70, alpha: 1)
-        // 宠物角落（侧视，自绘点阵）
-        // 猫窝：偏青的蓝紫，和暖色墙面有明确区分，又不至于抢主角
-        static let bedEdge      = SKColor(red: 0.28, green: 0.24, blue: 0.40, alpha: 1)
-        static let bedBase      = SKColor(red: 0.44, green: 0.40, blue: 0.62, alpha: 1)
-        static let bedHilite    = SKColor(red: 0.58, green: 0.55, blue: 0.76, alpha: 1)
-        static let bedInner     = SKColor(red: 0.34, green: 0.30, blue: 0.48, alpha: 1)
-        // 毛线球
-        static let ballEdge     = SKColor(red: 0.52, green: 0.18, blue: 0.22, alpha: 1)
-        static let ball         = SKColor(red: 0.82, green: 0.34, blue: 0.36, alpha: 1)
-        static let ballYarn     = SKColor(red: 0.94, green: 0.56, blue: 0.52, alpha: 1)
-        static let ballHilite   = SKColor(red: 0.98, green: 0.78, blue: 0.72, alpha: 1)
     }
 
     // MARK: - 动画
