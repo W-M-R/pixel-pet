@@ -58,6 +58,10 @@ struct PetHomeView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.refresh() }
         }
+        .onReceive(NotificationCenter.default.publisher(
+            for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+            talk.handleMemoryWarning()
+        }
         .onChange(of: talk.currentLine) { _, line in
             // AI 台词后到时替换气泡。实测模拟器 CPU-only 要 2-5s，
             // 所以预写台词的气泡时长要够长（见 showSpeech 默认 duration），
@@ -76,7 +80,7 @@ struct PetHomeView: View {
             scene.configure(species: store.pet.species, colorIndex: c)
         }
         .sheet(isPresented: $showDebug) {
-            DebugPanel(store: store) {
+            DebugPanel(store: store, talk: talk) {
                 roomStore.reset()
                 scene.layout = roomStore.layout
                 scene.rebuildRoom()
@@ -213,7 +217,18 @@ private struct ActionButton: View {
 /// 数值应该立刻跟着掉，而不需要 app 在后台跑任何东西。
 private struct DebugPanel: View {
     let store: PetStore
+    let talk: PetTalkCoordinator
     let onResetRoom: () -> Void
+
+    private var aiStatusText: String {
+        switch talk.aiAvailability {
+        case .ready:              return "状态：可用"
+        case .disabled:           return "状态：已关闭（使用预写台词）"
+        case .unsupportedLanguage:return "状态：当前语言不支持（模型中文质量不足）"
+        case .modelMissing:       return "状态：模型未打包"
+        case .loadFailed:         return "状态：模型加载失败"
+        }
+    }
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -250,6 +265,21 @@ private struct DebugPanel: View {
                 Section {
                     Button("重置状态", role: .destructive) { store.resetAll() }
                 }
+                Section {
+                    Toggle("AI 台词", isOn: Binding(
+                        get: { talk.aiEnabled },
+                        set: { talk.aiEnabled = $0 }))
+                    Text(aiStatusText)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Text("AI")
+                } footer: {
+                    Text("开启后宠物的台词由设备端模型生成，完全离线。\n"
+                         + "代价是约 1.4 GB 内存占用，且目前只有英文质量可用。")
+                        .font(.caption2)
+                }
+
                 Section("素材授权") {
                     NavigationLink("Credits") { CreditsView() }
                 }

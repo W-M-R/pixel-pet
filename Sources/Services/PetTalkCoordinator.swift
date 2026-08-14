@@ -33,6 +33,27 @@ final class PetTalkCoordinator {
         PetChatEngine.availability()
     }
 
+    /// 开关状态。关闭时顺便卸载模型，把内存还回去。
+    var aiEnabled: Bool {
+        get { PetChatEngine.isEnabled }
+        set {
+            PetChatEngine.isEnabled = newValue
+            if !newValue {
+                generationTask?.cancel()
+                isGenerating = false
+                Task { await engine.unload() }
+            }
+        }
+    }
+
+    /// 收到内存警告时主动卸载 —— 宠物 app 长期挂后台，
+    /// 与其被系统整个杀掉，不如先放掉模型。
+    func handleMemoryWarning() {
+        generationTask?.cancel()
+        isGenerating = false
+        Task { await engine.unload() }
+    }
+
     /// 触发说话。
     /// - Parameters:
     ///   - context: 宠物状态快照
