@@ -18,15 +18,16 @@ struct RoomLayout: Codable, Equatable {
 
     var slots: [Slot]
 
-    /// 默认布局。家具靠墙贴地，中间留出宠物活动区。
+    /// 默认布局：空。
+    ///
+    /// 曾经用 OGA 的 Home Objects 包摆了床/书架/盆栽，但那套素材是
+    /// **俯视视角**（能看到整个床面和枕头），而 LPC 宠物是**纯侧视**。
+    /// 两种视角放在一起怎么摆都别扭，不是缩放或位置能修的问题。
+    ///
+    /// 现在房间的墙/地板/窗/挂画全部手绘，视角统一在侧视，
+    /// 家具留空。要加家具的话必须是侧视素材，否则会重新引入这个问题。
     static var `default`: RoomLayout {
-        RoomLayout(slots: [
-            Slot(id: "rug",        xRatio: 0.50, yOffset: -16, scaleMul: 1.1,  z: 0),
-            Slot(id: "bed",        xRatio: 0.15, yOffset: 30,  scaleMul: 0.85, z: 1),
-            Slot(id: "nightstand", xRatio: 0.33, yOffset: 14,  scaleMul: 0.85, z: 1),
-            Slot(id: "bookshelf",  xRatio: 0.88, yOffset: 34,  scaleMul: 0.85, z: 1),
-            Slot(id: "plant",      xRatio: 0.71, yOffset: 14,  scaleMul: 0.85, z: 1)
-        ])
+        RoomLayout(slots: [])
     }
 }
 

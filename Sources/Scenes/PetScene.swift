@@ -10,8 +10,12 @@ final class PetScene: SKScene {
 
     // MARK: - 配置
 
-    /// 整数倍缩放，保证像素边界对齐。32×32 × 5 = 160pt
-    private let pixelScale: CGFloat = 5
+    /// 整数倍缩放，保证像素边界对齐。
+    ///
+    /// 用 4 而不是 5：家具的真实尺寸比宠物大得多（床 60×64 vs 猫 24×19，
+    /// 也就是 2.5 倍宽 3.4 倍高），这个比例本身是对的，但 ×5 之后一张床
+    /// 就占掉大半屏，房间塞不下几件家具。缩到 ×4 让构图有呼吸空间。
+    private let pixelScale: CGFloat = 4
     private let walkSpeed: CGFloat = 34      // pt/秒
     private let followSpeed: CGFloat = 82    // 追手指时快一些
 
@@ -59,8 +63,31 @@ final class PetScene: SKScene {
     /// 家具被移动后回调，交给 RoomStore 持久化
     var onFurnitureMoved: ((String, Double) -> Void)?
 
-    /// 地面高度（场景底部往上留一点，宠物在这条线上活动）
-    private var groundY: CGFloat { size.height * 0.28 }
+    // MARK: - 房间几何
+    //
+    // 三条水平基准线，从上到下：
+    //
+    //   ┌──────────────────┐
+    //   │      墙           │
+    //   │  ┌──┐ ┌┐ ┌──┐    │  家具靠墙，底边坐在 wallBaseY
+    //   ├──┴──┴─┴┴─┴──┴────┤  wallBaseY（墙脚线）
+    //   │                   │  地面通道 —— 宠物独占
+    //   │      🐈          │  groundY（宠物脚底）
+    //   └──────────────────┘
+    //
+    // 分层的意义：家具和宠物在垂直方向上不重叠，所以永远不会互相遮挡。
+    // 之前家具和宠物都堆在 groundY 附近，宠物一走过去就被压住。
+
+    /// 墙脚线。墙与地面的分界，家具坐在这条线上。
+    ///
+    /// 0.34 是按最高家具反推的：书架/床 64 源像素 × pixelScale 4 = 256pt，
+    /// 顶边落在 0.34H + 256 ≈ 0.61H，正好在状态栏（约 0.80H 以上）之下，
+    /// 留出明显间隙。再高就会显得顶到 UI。
+    private var wallBaseY: CGFloat { size.height * 0.30 }
+
+    /// 宠物脚底线。墙脚线下方留一条通道，
+    /// 高度约宠物身高的 1.5 倍，够走动又不空旷。
+    private var groundY: CGFloat { size.height * 0.155 }
 
     var onPetTouched: (() -> Void)?
 
@@ -83,17 +110,9 @@ final class PetScene: SKScene {
         for node in furnitureNodes { node.removeFromParent() }
         furnitureNodes.removeAll()
         guard let roomSheet, size.width > 1 else { return }
-        let scale = pixelScale * 0.8
+        let scale = pixelScale
         for slot in layout.slots {
-            guard let item = RoomSpriteSheet.Furniture(rawValue: slot.id) else { continue }
-            let node = SKSpriteNode(texture: RoomSpriteSheet.furnitureTexture(from: roomSheet, item))
-            node.texture?.filteringMode = .nearest
-            node.setScale(scale * slot.scaleMul)
-            node.position = CGPoint(x: size.width * slot.xRatio, y: groundY + slot.yOffset)
-            node.zPosition = slot.z
-            node.name = slot.id
-            addChild(node)
-            furnitureNodes.append(node)
+            addFurniture(slot, sheet: roomSheet, scale: scale)
         }
     }
 
@@ -121,7 +140,7 @@ final class PetScene: SKScene {
         shadow = SKShapeNode(ellipseOf: CGSize(width: 44, height: 12))
         shadow.fillColor = SKColor(white: 0, alpha: 0.18)
         shadow.strokeColor = .clear
-        shadow.zPosition = 1
+        shadow.zPosition = 9
         addChild(shadow)
 
         let firstFrame = sheet.map {
@@ -131,7 +150,7 @@ final class PetScene: SKScene {
         pet.texture?.filteringMode = .nearest
         pet.setScale(pixelScale)
         pet.position = CGPoint(x: size.width / 2, y: groundY)
-        pet.zPosition = 2
+        pet.zPosition = 10
         addChild(pet)
 
         applyWalkAnimation()
@@ -152,61 +171,222 @@ final class PetScene: SKScene {
         buildFloor()
         guard let roomSheet else { return }
         furnitureNodes.removeAll()
-        let scale = pixelScale * 0.8   // 家具比宠物略小一点，避免抢主角
+        // 家具与宠物同一像素密度。之前乘 0.8 会让家具的像素格
+        // 比宠物小，两种密度混在一起看着很脏。
+        let scale = pixelScale
 
         for slot in layout.slots {
-            guard let item = RoomSpriteSheet.Furniture(rawValue: slot.id) else { continue }
-            let tex = RoomSpriteSheet.furnitureTexture(from: roomSheet, item)
-            let node = SKSpriteNode(texture: tex)
-            node.texture?.filteringMode = .nearest
-            node.setScale(scale * slot.scaleMul)
-            node.position = CGPoint(x: size.width * slot.xRatio,
-                                    y: groundY + slot.yOffset)
-            node.zPosition = slot.z
-            node.name = slot.id
-            addChild(node)
-            furnitureNodes.append(node)
+            addFurniture(slot, sheet: roomSheet, scale: scale)
         }
     }
 
-    /// 墙 + 地板 + 踢脚线。用纯色块，因为 Home Objects 包里没有墙纸/地板 tile。
-    /// 放在场景里而不是 SwiftUI 层，这样家具和地面的相对位置只有一处真相。
-    private func buildFloor() {
-        let floorH = groundY + 6
+    /// 家具锚点设在**底部中心**，这样 yOffset 直接就是「底边离墙脚线多高」，
+    /// 不用为每件家具单独算高度的一半。
+    private func addFurniture(_ slot: RoomLayout.Slot,
+                              sheet: SKTexture,
+                              scale: CGFloat) {
+        guard let item = RoomSpriteSheet.Furniture(rawValue: slot.id) else { return }
+        let node = SKSpriteNode(texture: RoomSpriteSheet.furnitureTexture(from: sheet, item))
+        node.texture?.filteringMode = .nearest
+        // 地毯平铺在地上，用中心锚点；其余家具立着，用底部锚点，
+        // 这样 yOffset 的语义就是「底边离墙脚线多高」。
+        node.anchorPoint = item == .rug ? CGPoint(x: 0.5, y: 0.5)
+                                        : CGPoint(x: 0.5, y: 0)
+        node.setScale(scale * slot.scaleMul)
+        node.position = CGPoint(x: size.width * slot.xRatio,
+                                y: wallBaseY + slot.yOffset)
+        node.zPosition = slot.z
+        node.name = slot.id
+        addChild(node)
+        furnitureNodes.append(node)
+    }
 
-        let wall = SKSpriteNode(color: SKColor(red: 0.30, green: 0.33, blue: 0.46, alpha: 1),
-                                size: CGSize(width: size.width, height: size.height - floorH))
+    /// 墙 + 地板。
+    ///
+    /// Home Objects 包里没有墙纸/地板 tile，所以这些是用像素块画的。
+    /// 关键是**所有尺寸取 pixelScale 的整数倍**，让手绘部分和 32×32
+    /// 素材保持同一像素密度 —— 否则会出现「细线条 + 粗像素」混在一起
+    /// 的廉价感。
+    private func buildFloor() {
+        let u = pixelScale                    // 1 源像素 = pixelScale pt
+        let base = (wallBaseY / u).rounded() * u   // 墙脚线对齐像素网格
+
+        // ── 墙 ──
+        let wall = SKSpriteNode(color: Palette.wall,
+                                size: CGSize(width: size.width, height: size.height - base))
         wall.anchorPoint = CGPoint(x: 0, y: 0)
-        wall.position = CGPoint(x: 0, y: floorH)
-        wall.zPosition = -2
+        wall.position = CGPoint(x: 0, y: base)
+        wall.zPosition = -6
         addChild(wall)
 
-        let floor = SKSpriteNode(color: SKColor(red: 0.45, green: 0.34, blue: 0.27, alpha: 1),
-                                 size: CGSize(width: size.width, height: floorH))
+        // 墙纸竖条纹：每 8 源像素一条宽 2px 的条，对比度拉到看得见为止
+        var x: CGFloat = 0
+        while x < size.width {
+            let stripe = SKSpriteNode(color: Palette.wallStripe,
+                                      size: CGSize(width: u * 3, height: size.height - base))
+            stripe.anchorPoint = CGPoint(x: 0, y: 0)
+            stripe.position = CGPoint(x: x, y: base)
+            stripe.zPosition = -5
+            addChild(stripe)
+            x += u * 16
+        }
+
+        buildWallDecor(base: base, u: u)
+
+        // ── 地板 ──
+        let floor = SKSpriteNode(color: Palette.floor,
+                                 size: CGSize(width: size.width, height: base))
         floor.anchorPoint = CGPoint(x: 0, y: 0)
         floor.position = .zero
-        floor.zPosition = -2
+        floor.zPosition = -6
         addChild(floor)
 
-        // 踢脚线：一条深色窄带，把墙和地分开
-        let skirting = SKSpriteNode(color: SKColor(red: 0.24, green: 0.19, blue: 0.16, alpha: 1),
-                                    size: CGSize(width: size.width, height: 4))
-        skirting.anchorPoint = CGPoint(x: 0, y: 0)
-        skirting.position = CGPoint(x: 0, y: floorH - 2)
-        skirting.zPosition = -1
-        addChild(skirting)
-
-        // 地板缝，给地面一点纵深
-        var y: CGFloat = floorH - 18
+        // 地板条：横向木纹，间距随纵向递增，制造一点透视纵深
+        var y: CGFloat = base - u * 3
+        var gap: CGFloat = u * 3
         while y > 0 {
-            let line = SKSpriteNode(color: SKColor(white: 0, alpha: 0.07),
-                                    size: CGSize(width: size.width, height: 2))
-            line.anchorPoint = CGPoint(x: 0, y: 0)
-            line.position = CGPoint(x: 0, y: y)
-            line.zPosition = -1
-            addChild(line)
-            y -= 18
+            let plank = SKSpriteNode(color: Palette.floorSeam,
+                                     size: CGSize(width: size.width, height: u))
+            plank.anchorPoint = CGPoint(x: 0, y: 0)
+            plank.position = CGPoint(x: 0, y: y)
+            plank.zPosition = -5
+            addChild(plank)
+            y -= gap
+            gap += u * 0.5                  // 越靠下间距越大 = 越近
         }
+
+        // ── 踢脚线：坐在墙脚线上，两像素高，亮暗两色做立体感 ──
+        let skirtDark = SKSpriteNode(color: Palette.skirtingDark,
+                                     size: CGSize(width: size.width, height: u))
+        skirtDark.anchorPoint = CGPoint(x: 0, y: 0)
+        skirtDark.position = CGPoint(x: 0, y: base)
+        skirtDark.zPosition = 0.5           // 压在家具底边之上一点，藏住接缝
+        addChild(skirtDark)
+
+        let skirtLite = SKSpriteNode(color: Palette.skirtingLite,
+                                     size: CGSize(width: size.width, height: u))
+        skirtLite.anchorPoint = CGPoint(x: 0, y: 0)
+        skirtLite.position = CGPoint(x: 0, y: base + u)
+        skirtLite.zPosition = 0.5
+        addChild(skirtLite)
+    }
+
+    /// 墙上的装饰：窗、挂画、壁灯、侧视的猫窝和食盆。
+    ///
+    /// 全部手绘像素块，尺寸严格取 u 的整数倍。**都是侧视/正视**，
+    /// 和宠物的视角一致 —— 这是不用现成家具包的原因。
+    private func buildWallDecor(base: CGFloat, u: CGFloat) {
+        func block(_ bx: CGFloat, _ by: CGFloat, _ bw: CGFloat, _ bh: CGFloat,
+                   _ color: SKColor, _ z: CGFloat) {
+            let n = SKSpriteNode(color: color, size: CGSize(width: bw, height: bh))
+            n.anchorPoint = CGPoint(x: 0, y: 0)
+            n.position = CGPoint(x: (bx / u).rounded() * u,
+                                 y: (by / u).rounded() * u)
+            n.zPosition = z
+            addChild(n)
+        }
+
+        // ── 窗（正视，居中偏右）──
+        let w = u * 38, h = u * 28
+        let x = size.width * 0.60 - w / 2
+        let y = base + u * 20
+
+        block(x - u * 2, y - u * 2, w + u * 4, h + u * 4, Palette.frameDark, -3.5)
+        block(x, y, w, h, Palette.sky, -3.4)
+        for (sx, sy) in [(5, 23), (13, 18), (28, 24), (33, 15), (20, 25), (9, 12)] {
+            block(x + u * CGFloat(sx), y + u * CGFloat(sy), u, u, Palette.moon, -3.35)
+        }
+        block(x, y, w, u * 8, Palette.hillFar, -3.33)
+        block(x, y, u * 20, u * 5, Palette.hill, -3.32)
+        // 月牙：亮圆 + 偏移的天空色圆盖住一部分
+        block(x + u * 25, y + u * 19, u * 5, u * 5, Palette.moon, -3.2)
+        block(x + u * 27, y + u * 21, u * 4, u * 4, Palette.sky, -3.19)
+        // 窗棂
+        block(x + w / 2 - u / 2, y, u, h, Palette.frameDark, -3.1)
+        block(x, y + h / 2 - u / 2, w, u, Palette.frameDark, -3.1)
+        // 窗台
+        block(x - u * 3, y - u * 3, w + u * 6, u * 2, Palette.sill, -3.0)
+
+        // ── 挂画（正视，偏左）──
+        let pw = u * 14, ph = u * 11
+        let px2 = size.width * 0.18 - pw / 2
+        let py2 = base + u * 28
+        block(px2 - u, py2 - u, pw + u * 2, ph + u * 2, Palette.frameDark, -3.5)
+        block(px2, py2, pw, ph, Palette.artBg, -3.4)
+        block(px2, py2, pw, u * 4, Palette.artHill, -3.3)
+        block(px2 + u * 9, py2 + u * 7, u * 3, u * 3, Palette.artSun, -3.3)
+
+        // ── 壁灯（侧视，画的右侧）──
+        let lx = size.width * 0.32
+        let ly = base + u * 34
+        block(lx, ly, u * 2, u * 5, Palette.frameDark, -3.4)      // 支架
+        block(lx - u * 2, ly + u * 5, u * 6, u * 3, Palette.lampShade, -3.3)
+        // 灯光：一片半透明暖色向下扩散
+        for i in 0..<3 {
+            let gw = u * CGFloat(6 + i * 4)
+            block(lx + u - gw / 2, ly - u * CGFloat(i * 3), gw, u * 3,
+                  Palette.lampGlow.withAlphaComponent(0.10 - CGFloat(i) * 0.03), -3.25)
+        }
+
+        buildPetCorner(base: base, u: u)
+    }
+
+    /// 宠物角落：侧视的猫窝 + 食盆 + 玩具球。
+    /// 放在地面通道里（墙脚线下方），和宠物同一平面。
+    private func buildPetCorner(base: CGFloat, u: CGFloat) {
+        func block(_ bx: CGFloat, _ by: CGFloat, _ bw: CGFloat, _ bh: CGFloat,
+                   _ color: SKColor, _ z: CGFloat) {
+            let n = SKSpriteNode(color: color, size: CGSize(width: bw, height: bh))
+            n.anchorPoint = CGPoint(x: 0, y: 0)
+            n.position = CGPoint(x: (bx / u).rounded() * u,
+                                 y: (by / u).rounded() * u)
+            n.zPosition = z
+            addChild(n)
+        }
+
+        // 猫窝（侧视，一个带靠背的软垫），放左下
+        let bx = size.width * 0.12
+        let by = groundY - u * 4
+        block(bx, by, u * 22, u * 4, Palette.bedBase, 0.8)          // 垫身
+        block(bx, by + u * 4, u * 22, u * 1, Palette.bedHilite, 0.8) // 高光边
+        block(bx, by + u * 4, u * 3, u * 6, Palette.bedBase, 0.8)    // 左靠背
+        block(bx + u * 19, by + u * 4, u * 3, u * 6, Palette.bedBase, 0.8) // 右靠背
+
+        // 玩具球，放右下
+        let ballX = size.width * 0.86
+        block(ballX, groundY - u * 3, u * 4, u * 4, Palette.ball, 0.8)
+        block(ballX + u, groundY - u * 2, u * 2, u * 2, Palette.ballHilite, 0.81)
+    }
+
+    /// 房间配色。集中放一处，方便整体调色而不用满场景找魔数。
+    private enum Palette {
+        // 墙：暖调米色，比原来的冷紫更像家里
+        static let wall         = SKColor(red: 0.85, green: 0.78, blue: 0.68, alpha: 1)
+        static let wallStripe   = SKColor(red: 0.82, green: 0.755, blue: 0.655, alpha: 1)
+        // 地板：木色，和墙有明确冷暖/明度区分
+        static let floor        = SKColor(red: 0.62, green: 0.44, blue: 0.31, alpha: 1)
+        static let floorSeam    = SKColor(red: 0.52, green: 0.35, blue: 0.24, alpha: 1)
+        static let skirtingDark = SKColor(red: 0.38, green: 0.26, blue: 0.19, alpha: 1)
+        static let skirtingLite = SKColor(red: 0.72, green: 0.56, blue: 0.42, alpha: 1)
+        // 窗外夜景
+        static let sky          = SKColor(red: 0.14, green: 0.19, blue: 0.36, alpha: 1)
+        static let hill         = SKColor(red: 0.17, green: 0.27, blue: 0.31, alpha: 1)
+        static let hillFar      = SKColor(red: 0.20, green: 0.24, blue: 0.36, alpha: 1)
+        static let moon         = SKColor(red: 0.98, green: 0.96, blue: 0.86, alpha: 1)
+        static let frameDark    = SKColor(red: 0.35, green: 0.24, blue: 0.18, alpha: 1)
+        static let sill         = SKColor(red: 0.72, green: 0.56, blue: 0.42, alpha: 1)
+        // 挂画
+        static let artBg        = SKColor(red: 0.56, green: 0.72, blue: 0.78, alpha: 1)
+        static let artHill      = SKColor(red: 0.42, green: 0.60, blue: 0.42, alpha: 1)
+        static let artSun       = SKColor(red: 0.96, green: 0.80, blue: 0.42, alpha: 1)
+        // 壁灯
+        static let lampShade    = SKColor(red: 0.90, green: 0.74, blue: 0.44, alpha: 1)
+        static let lampGlow     = SKColor(red: 1.00, green: 0.92, blue: 0.70, alpha: 1)
+        // 宠物角落（侧视，自绘）
+        static let bedBase      = SKColor(red: 0.48, green: 0.36, blue: 0.58, alpha: 1)
+        static let bedHilite    = SKColor(red: 0.62, green: 0.50, blue: 0.72, alpha: 1)
+        static let ball         = SKColor(red: 0.85, green: 0.35, blue: 0.38, alpha: 1)
+        static let ballHilite   = SKColor(red: 0.96, green: 0.60, blue: 0.58, alpha: 1)
     }
 
     // MARK: - 动画
@@ -424,7 +604,7 @@ final class PetScene: SKScene {
 
         let side: CGFloat = facing == .right ? 22 : -34
         container.position = CGPoint(x: pet.position.x + side, y: pet.position.y - 24)
-        container.zPosition = 3
+        container.zPosition = 11
         container.alpha = 0
         addChild(container)
         container.run(.fadeIn(withDuration: 0.15))
@@ -487,7 +667,7 @@ final class PetScene: SKScene {
         bubble?.removeFromParent()
 
         node.position = CGPoint(x: pet.position.x, y: pet.position.y + 60)
-        node.zPosition = 5
+        node.zPosition = 20
         node.alpha = 0
         addChild(node)
         bubble = node
