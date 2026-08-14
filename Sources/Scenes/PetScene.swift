@@ -36,7 +36,8 @@ final class PetScene: SKScene {
     private var foodNode: SKNode?
 
     private var colorIndex: Int = 0
-    private var species: PetSpecies = .cat
+    private var breed: PetBreed = .cat
+    private var stage: PetStage = .adult
 
     /// 宠物当前行为。和 PetState 的「需求」分开——需求是数据，行为是表现。
     private enum Behavior {
@@ -126,21 +127,33 @@ final class PetScene: SKScene {
         }
     }
 
-    func configure(species: PetSpecies, colorIndex: Int) {
-        guard species != self.species || colorIndex != self.colorIndex || pet == nil else { return }
-        self.species = species
+    /// 配置宠物外观。阶段变化会换 sheet（幼年/成长/老年是程序化派生的）。
+    func configure(breed: PetBreed, colorIndex: Int, stage: PetStage) {
+        let changed = breed.id != self.breed.id
+            || colorIndex != self.colorIndex
+            || stage != self.stage
+            || pet == nil
+        guard changed else { return }
+        self.breed = breed
         self.colorIndex = colorIndex
-        sheet = PetSpriteSheet.loadSheet(named: species.sheetName)
-        sleepSheet = PetSpriteSheet.loadSheet(named: "\(species.sheetName)_sleep")
+        self.stage = stage
+        loadSheets()
         if pet != nil { applyWalkAnimation() }
+    }
+
+    /// 成年用源图，其余阶段用 tools/make_stages.py 生成的派生 sheet。
+    /// 派生 sheet 缺失时回退源图，保证不会白屏。
+    private func loadSheets() {
+        sheet = PetSpriteSheet.loadSheet(named: breed.sheetName(for: stage))
+            ?? PetSpriteSheet.loadSheet(named: breed.sheetName)
+        sleepSheet = PetSpriteSheet.loadSheet(named: breed.sleepSheetName)
     }
 
     private func buildScene() {
         removeAllChildren()
         guard size.width > 1 else { return }
 
-        sheet = PetSpriteSheet.loadSheet(named: species.sheetName)
-        sleepSheet = PetSpriteSheet.loadSheet(named: "\(species.sheetName)_sleep")
+        loadSheets()
         roomSheet = RoomSpriteSheet.loadSheet(named: "house_objects")
         emoteSheet = RoomSpriteSheet.loadSheet(named: "emotes")
 

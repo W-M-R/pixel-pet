@@ -4,6 +4,7 @@ import Observation
 /// 宠物存档。用 JSON 存文件，不用 UserDefaults——将来要加多只宠物、
 /// 要导出备份都方便。
 @Observable
+@MainActor
 final class PetStore {
 
     private(set) var pet: PetState
@@ -35,7 +36,8 @@ final class PetStore {
         startHeartbeat()
     }
 
-    deinit { timer?.invalidate() }
+    // 注：@MainActor 类的 deinit 不能访问隔离状态，
+    // 所以不在这里 invalidate。PetStore 生命周期与 app 相同，可忽略。
 
     private func startHeartbeat() {
         // 10 秒一次足够。数值变化本来就慢，刷太勤只是白耗电。
@@ -54,8 +56,30 @@ final class PetStore {
     }
 
     /// 记录本次打开。要在读过 daysSinceLastSeen 之后调用。
+    /// 记录本次打开，并更新连续打开天数。
+    ///
+    /// 按**日历天**去重：同一天多次打开只算一次；隔一天算连续；
+    /// 隔两天以上断签重置为 1。要在读过 daysSinceLastSeen 之后调用。
     func markSeen() {
-        pet.lastSeenAt = Date()
+        let now = Date()
+        let cal = Calendar.current
+        if let last = pet.lastStreakDay {
+            let d = cal.dateComponents([.day],
+                                       from: cal.startOfDay(for: last),
+                                       to: cal.startOfDay(for: now)).day ?? 0
+            if d == 1 {
+                pet.streakDays = (pet.streakDays ?? 0) + 1
+                pet.lastStreakDay = now
+            } else if d >= 2 {
+                pet.streakDays = 1                  // 断签
+                pet.lastStreakDay = now
+            }
+            // d == 0：同一天，不动
+        } else {
+            pet.streakDays = 1
+            pet.lastStreakDay = now
+        }
+        pet.lastSeenAt = now
         persist()
     }
 
@@ -64,9 +88,9 @@ final class PetStore {
         let now = Date()
         return PetLineContext(
             name: pet.name.isEmpty
-                ? L(pet.species.displayNameKey)
+                ? L(pet.breed.nameKey)
                 : pet.name,
-            species: pet.species == .cat ? "cat" : "dog",
+            species: pet.breed.englishNoun,
             satiety: pet.satiety(at: now),
             mood: pet.mood(at: now),
             hygiene: pet.hygiene(at: now),
@@ -80,12 +104,14 @@ final class PetStore {
     func feed() {
         extendAwakeIfNeeded()
         pet.lastFedAt = Date()
+        pet.totalFeedCount = (pet.totalFeedCount ?? 0) + 1
         persist()
     }
 
     func play() {
         extendAwakeIfNeeded()
         pet.lastPlayedAt = Date()
+        pet.totalPlayCount = (pet.totalPlayCount ?? 0) + 1
         persist()
     }
 
@@ -127,6 +153,7 @@ final class PetStore {
     func clean() {
         extendAwakeIfNeeded()
         pet.lastCleanedAt = Date()
+        pet.totalCleanCount = (pet.totalCleanCount ?? 0) + 1
         persist()
     }
 
@@ -135,8 +162,8 @@ final class PetStore {
         persist()
     }
 
-    func choose(species: PetSpecies, colorIndex: Int) {
-        pet.species = species
+    func choose(breedID: String, colorIndex: Int) {
+        pet.breedID = breedID
         pet.colorIndex = colorIndex
         persist()
     }
@@ -151,6 +178,14 @@ final class PetStore {
         refresh()
     }
 
+    /// 调试用：把 bornAt 往前推，直接跳到指定阶段。
+    func debugSetStage(_ stage: PetStage) {
+        pet.bornAt = Calendar.current.date(byAdding: .day,
+                                           value: -stage.minDays, to: Date()) ?? Date()
+        persist()
+        refresh()
+    }
+
     func resetAll() {
         pet = PetState(species: pet.species, colorIndex: pet.colorIndex, name: pet.name)
         persist()
@@ -161,5 +196,8 @@ final class PetStore {
         guard let data = try? JSONEncoder().encode(pet) else { return }
         try? data.write(to: fileURL, options: .atomic)
         tick = Date()
+        // 状态变了就重排通知 —— 因为「何时会饿」是从时间戳算的
+        let name = pet.name.isEmpty ? L(pet.breed.nameKey) : pet.name
+        PetNotifications.reschedule(for: pet, petName: name)
     }
 }

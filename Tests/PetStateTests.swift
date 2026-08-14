@@ -205,3 +205,63 @@ final class PetSpriteSheetTests: XCTestCase {
         XCTAssertEqual(PetSpriteSheet.frameCount(row: 4), 4, "进食行是 4 帧")
     }
 }
+
+// MARK: - 生命阶段与品种抽象
+
+final class PetStageTests: XCTestCase {
+
+    func testStageBoundaries() {
+        XCTAssertEqual(PetStage.forAge(days: 0), .young)
+        XCTAssertEqual(PetStage.forAge(days: 2), .young)
+        XCTAssertEqual(PetStage.forAge(days: 3), .growing)
+        XCTAssertEqual(PetStage.forAge(days: 6), .growing)
+        XCTAssertEqual(PetStage.forAge(days: 7), .adult)
+        XCTAssertEqual(PetStage.forAge(days: 29), .adult)
+        XCTAssertEqual(PetStage.forAge(days: 30), .elder)
+    }
+
+    func testDaysToNext() {
+        XCTAssertEqual(PetStage.young.daysToNext(from: 0), 3)
+        XCTAssertEqual(PetStage.growing.daysToNext(from: 3), 4)
+        XCTAssertEqual(PetStage.adult.daysToNext(from: 7), 23)
+        XCTAssertNil(PetStage.elder.daysToNext(from: 30), "老年是最终阶段")
+    }
+
+    /// 成年用源图（无后缀），其余用派生 sheet
+    func testSheetNaming() {
+        XCTAssertEqual(PetBreed.cat.sheetName(for: .adult), "cat")
+        XCTAssertEqual(PetBreed.cat.sheetName(for: .young), "cat_young")
+        XCTAssertEqual(PetBreed.cat.sheetName(for: .elder), "cat_elder")
+        XCTAssertEqual(PetBreed.dog.sleepSheetName, "dog_sleep")
+    }
+
+    func testBreedRegistry() {
+        XCTAssertEqual(PetBreed.all.count, 2)
+        XCTAssertEqual(PetBreed.byID("dog").id, "dog")
+        XCTAssertEqual(PetBreed.byID("nope").id, "cat", "未知 ID 回退到猫")
+    }
+
+    /// 回归测试：旧存档存 `species`，新代码读 `breedID`。
+    /// 不兼容会让老用户的宠物被重置。
+    func testDecodesLegacySpeciesField() throws {
+        let legacy = """
+        {"species":"dog","colorIndex":2,"name":"旺财",
+         "bornAt":0,"lastFedAt":0,"lastPlayedAt":0,"lastCleanedAt":0}
+        """.data(using: .utf8)!
+        let d = try JSONDecoder().decode(PetState.self, from: legacy)
+        XCTAssertEqual(d.breedID, "dog")
+        XCTAssertEqual(d.colorIndex, 2)
+        XCTAssertEqual(d.name, "旺财")
+    }
+
+    func testEncodeRoundTrip() throws {
+        var s = PetState(breedID: "dog", colorIndex: 1, name: "小黑")
+        s.totalFeedCount = 5
+        s.streakDays = 3
+        let data = try JSONEncoder().encode(s)
+        let back = try JSONDecoder().decode(PetState.self, from: data)
+        XCTAssertEqual(back.breedID, "dog")
+        XCTAssertEqual(back.totalFeedCount, 5)
+        XCTAssertEqual(back.streakDays, 3)
+    }
+}

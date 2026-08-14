@@ -6,6 +6,7 @@ struct PetHomeView: View {
     @State private var roomStore = RoomStore()
     @State private var talk = PetTalkCoordinator()
     @State private var scene = PetScene()
+    @State private var showSettings = false
     @State private var showDebug = false
     @Environment(\.scenePhase) private var scenePhase
 
@@ -37,7 +38,7 @@ struct PetHomeView: View {
             }
             scene.scaleMode = .resizeFill
             scene.layout = roomStore.layout
-            scene.configure(species: store.pet.species, colorIndex: store.pet.colorIndex)
+            syncScenePet()
             scene.onPetTouched = {
                 // 睡着时戳它 = 叫醒，并维持一段清醒。
                 // 否则站起来后下一次心跳又会把它按回去睡。
@@ -79,11 +80,11 @@ struct PetHomeView: View {
             // 曾经用「距上次玩耍的时间」判断，导致一摸就睡（见 PetState.isDrowsy）。
             scene.setSleeping(store.pet.isDrowsy(at: store.tick))
         }
-        .onChange(of: store.pet.species) { _, s in
-            scene.configure(species: s, colorIndex: store.pet.colorIndex)
-        }
-        .onChange(of: store.pet.colorIndex) { _, c in
-            scene.configure(species: store.pet.species, colorIndex: c)
+        .onChange(of: store.pet.breedID) { _, _ in syncScenePet() }
+        .onChange(of: store.pet.colorIndex) { _, _ in syncScenePet() }
+        .onChange(of: store.pet.stage) { _, _ in syncScenePet() }
+        .sheet(isPresented: $showSettings) {
+            PetSettingsView(store: store, talk: talk)
         }
         .sheet(isPresented: $showDebug) {
             DebugPanel(store: store, talk: talk) {
@@ -93,6 +94,13 @@ struct PetHomeView: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    /// 把宠物的品种/毛色/阶段同步给场景。
+    private func syncScenePet() {
+        scene.configure(breed: store.pet.breed,
+                        colorIndex: store.pet.colorIndex,
+                        stage: store.pet.stage)
     }
 
     /// 触发说话。预写台词立刻出，AI 台词后到会自动替换。
@@ -126,12 +134,15 @@ struct PetHomeView: View {
                 Text(store.pet.dominantNeed(at: now).emoji)
                     .font(.system(size: 26))
                 Button {
-                    showDebug = true
+                    showSettings = true
                 } label: {
-                    Image(systemName: "slider.horizontal.3")
+                    Image(systemName: "gearshape.fill")
                         .font(.system(size: 15))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(.white.opacity(0.55))
                 }
+                // 长按进调试面板 —— 保留时间快进能力，但不占主界面
+                .simultaneousGesture(LongPressGesture(minimumDuration: 0.6)
+                    .onEnded { _ in showDebug = true })
             }
 
             HStack(spacing: 8) {
@@ -254,20 +265,28 @@ private struct DebugPanel: View {
                     Button("前进 1 天")  { store.debugAge(by: 86400) }
                 }
                 Section("宠物") {
-                    Picker("种类", selection: Binding(
-                        get: { store.pet.species },
-                        set: { store.choose(species: $0, colorIndex: store.pet.colorIndex) }
+                    Picker("品种", selection: Binding(
+                        get: { store.pet.breedID },
+                        set: { store.choose(breedID: $0, colorIndex: store.pet.colorIndex) }
                     )) {
-                        ForEach(PetSpecies.allCases) { s in
-                            Text(verbatim: L(s.displayNameKey)).tag(s)
+                        ForEach(PetBreed.all) { b in
+                            Text(verbatim: L(b.nameKey)).tag(b.id)
                         }
                     }
                     Picker("毛色", selection: Binding(
                         get: { store.pet.colorIndex },
-                        set: { store.choose(species: store.pet.species, colorIndex: $0) }
+                        set: { store.choose(breedID: store.pet.breedID, colorIndex: $0) }
                     )) {
-                        ForEach(0..<PetSpriteSheet.colorCount, id: \.self) { i in
+                        ForEach(0..<store.pet.breed.colorCount, id: \.self) { i in
                             Text("毛色 \(i + 1)").tag(i)
+                        }
+                    }
+                    Picker("阶段(调试)", selection: Binding(
+                        get: { store.pet.stage },
+                        set: { store.debugSetStage($0) }
+                    )) {
+                        ForEach(PetStage.allCases, id: \.self) { st in
+                            Text(verbatim: L(st.displayNameKey)).tag(st)
                         }
                     }
                 }
