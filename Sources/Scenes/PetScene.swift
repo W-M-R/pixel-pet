@@ -554,14 +554,19 @@ final class PetScene: SKScene {
 
     private func syncShadow() {
         guard let pet, let shadow else { return }
-        shadow.position = CGPoint(x: pet.position.x, y: pet.position.y - 22)
+        // 影子贴在脚底，略微下沉 1 源像素，看起来像压在地上
+        shadow.position = CGPoint(x: pet.position.x, y: petFeetY - pixelScale)
     }
 
     // MARK: - 外部触发
 
     func triggerEat() {
+        guard pet != nil else { return }
         behavior = .eating
         touchPoint = nil
+        // 睡姿改过 yScale，先复位再放盆，否则 petFeetY 算出来是压扁后的位置
+        pet.removeAction(forKey: "anim")
+        pet.setScale(pixelScale)
         dropFoodBowl()
         showEmojiBubble("🍖")
         applyEatAnimation { [weak self] in
@@ -574,19 +579,34 @@ final class PetScene: SKScene {
         }
     }
 
+    /// 宠物脚底的 y 坐标。
+    ///
+    /// 不能直接用 `pet.position.y` —— 那是节点中心。也不能硬编码偏移，
+    /// 因为偏移量随 pixelScale 变（曾经写死 -24，pixelScale 从 5 改到 4
+    /// 之后食盆就跑到宠物头上去了）。
+    ///
+    /// 帧是 32×32，而猫的内容底边在第 26 行，即底部有 5 行空白。
+    /// 所以脚底 = 中心 - (16 - 5) × pixelScale。
+    private var petFeetY: CGFloat {
+        let frameH = PetSpriteSheet.frameSize.height        // 32
+        let bottomPadding: CGFloat = 5                      // 实测内容底边 y=26
+        return pet.position.y - (frameH / 2 - bottomPadding) * pixelScale
+    }
+
     /// 喂食时在宠物脚边放一个食盆。
-    /// Home Objects 包里没有食盆，所以用像素矩形手绘一个 —— 12×6 的盆
-    /// 加几块食物色块，保持和 32×32 素材相同的像素密度。
+    /// 素材包里没有食盆（而且那套是俯视的），所以手绘一个侧视的，
+    /// 尺寸取 pixelScale 整数倍，与宠物同像素密度。
     private func dropFoodBowl() {
         foodNode?.removeFromParent()
 
-        let unit = pixelScale          // 1 源像素 = pixelScale pt
+        let u = pixelScale             // 1 源像素 = pixelScale pt
         let container = SKNode()
 
+        /// 以「盆底左边缘」为原点画，方便对齐地面
         func block(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, _ color: SKColor) {
-            let n = SKSpriteNode(color: color, size: CGSize(width: w * unit, height: h * unit))
+            let n = SKSpriteNode(color: color, size: CGSize(width: w * u, height: h * u))
             n.anchorPoint = CGPoint(x: 0, y: 0)
-            n.position = CGPoint(x: x * unit, y: y * unit)
+            n.position = CGPoint(x: x * u, y: y * u)
             container.addChild(n)
         }
 
@@ -594,16 +614,18 @@ final class PetScene: SKScene {
         let bowlLite = SKColor(red: 0.58, green: 0.38, blue: 0.28, alpha: 1)
         let kibble   = SKColor(red: 0.80, green: 0.58, blue: 0.30, alpha: 1)
 
-        // 盆身
-        block(0, 0, 12, 2, bowlDark)
-        block(-1, 2, 14, 2, bowlLite)
-        // 食物
-        block(2, 4, 3, 2, kibble)
-        block(6, 4, 4, 2, kibble)
-        block(4, 6, 3, 1, kibble)
+        // 盆身（宽 12 源像素，居中在原点两侧）
+        block(-6, 0, 12, 2, bowlDark)
+        block(-7, 2, 14, 1, bowlLite)
+        // 食物堆
+        block(-4, 3, 3, 2, kibble)
+        block(0, 3, 4, 2, kibble)
+        block(-2, 5, 3, 1, kibble)
 
-        let side: CGFloat = facing == .right ? 22 : -34
-        container.position = CGPoint(x: pet.position.x + side, y: pet.position.y - 24)
+        // 放在宠物**面朝的那一侧**，脚底同一水平线上。
+        // 距离 = 宠物身体半宽(12源像素) + 盆半宽(7) + 一点间隙 ≈ 20 源像素
+        let side: CGFloat = (facing == .right ? 1 : -1) * u * 20
+        container.position = CGPoint(x: pet.position.x + side, y: petFeetY)
         container.zPosition = 11
         container.alpha = 0
         addChild(container)
@@ -612,22 +634,46 @@ final class PetScene: SKScene {
     }
 
     func triggerPlay() {
+        guard let pet else { return }
+        // 玩耍会叫醒宠物
+        if isSleeping {
+            behavior = .idle
+            nextDecisionAt = 0
+            applyIdlePose()
+        }
         showEmote(.music)
-        // 蹦两下。像素风里跳跃用位移就够，不需要物理引擎。
-        let up = SKAction.moveBy(x: 0, y: 26, duration: 0.16)
-        up.timingMode = .easeOut
-        let down = SKAction.moveBy(x: 0, y: -26, duration: 0.16)
-        down.timingMode = .easeIn
-        pet.run(.repeat(.sequence([up, down]), count: 2))
+
+        // 蹦两下。用 moveTo 回到基准 y 而不是 moveBy 抵消位移 ——
+        // moveBy 一旦被打断（中途切睡觉/换宠物），宠物会永久停在半空。
+        let baseY = groundY
+        let hop = SKAction.sequence([
+            {
+                let a = SKAction.moveTo(y: baseY + pixelScale * 7, duration: 0.16)
+                a.timingMode = .easeOut
+                return a
+            }(),
+            {
+                let a = SKAction.moveTo(y: baseY, duration: 0.16)
+                a.timingMode = .easeIn
+                return a
+            }()
+        ])
+        pet.removeAction(forKey: "hop")
+        pet.run(.repeat(hop, count: 2), withKey: "hop")
     }
 
     func triggerClean() {
+        guard let pet else { return }
         showEmote(.droplet)
+        // 结尾显式设回 alpha=1，防止动画被打断后宠物半透明卡住
         let fade = SKAction.sequence([
+            .fadeAlpha(to: 0.55, duration: 0.18),
+            .fadeAlpha(to: 1, duration: 0.18),
             .fadeAlpha(to: 0.55, duration: 0.18),
             .fadeAlpha(to: 1, duration: 0.18)
         ])
-        pet.run(.repeat(fade, count: 2))
+        pet.removeAction(forKey: "clean")
+        pet.run(fade, withKey: "clean")
     }
 
     func showNeedBubble(_ need: PetNeed) {
@@ -666,7 +712,8 @@ final class PetScene: SKScene {
         guard let pet else { return }
         bubble?.removeFromParent()
 
-        node.position = CGPoint(x: pet.position.x, y: pet.position.y + 60)
+        // 气泡浮在头顶上方。头顶 = 脚底 + 内容高度(19 源像素)，再留 4 像素间隙
+        node.position = CGPoint(x: pet.position.x, y: petFeetY + pixelScale * 23)
         node.zPosition = 20
         node.alpha = 0
         addChild(node)
