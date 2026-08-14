@@ -1,0 +1,15 @@
+# Xcode / build
+DerivedData/
+build/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+.DS_Store
+
+# XcodeGen 生成物（project.yml 才是源）
+PixelPet.xcodeproj/
+
+# 素材原始压缩包（体积大，凭证里记录 SHA-256 即可）
+ASSET-PROVENANCE/**/*.zip
+
+# 验证截图
+.probe/

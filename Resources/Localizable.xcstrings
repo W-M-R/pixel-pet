@@ -1,0 +1,90 @@
+{
+  "sourceLanguage" : "zh-Hans",
+  "strings" : {
+    "action.clean" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Clean" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "洗澡" } }
+      }
+    },
+    "action.feed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Feed" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "喂食" } }
+      }
+    },
+    "action.play" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Play" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "玩耍" } }
+      }
+    },
+    "home.age" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Day %d together" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "相伴第 %d 天" } }
+      }
+    },
+    "need.bored" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Looking a little bored…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "有点无聊,陪它玩会儿吧" } }
+      }
+    },
+    "need.content" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Feeling great right now." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "现在心情不错" } }
+      }
+    },
+    "need.dirty" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Could use a bath." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "该洗澡了" } }
+      }
+    },
+    "need.hungry" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Getting hungry!" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "肚子饿了!" } }
+      }
+    },
+    "need.sleepy" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Getting sleepy…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "有点困了" } }
+      }
+    },
+    "species.cat" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Cat" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "小猫" } }
+      }
+    },
+    "species.dog" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Dog" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "小狗" } }
+      }
+    },
+    "stat.hygiene" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "CLEAN" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "清洁" } }
+      }
+    },
+    "stat.mood" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "MOOD" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "心情" } }
+      }
+    },
+    "stat.satiety" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "FULL" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "饱食" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}
