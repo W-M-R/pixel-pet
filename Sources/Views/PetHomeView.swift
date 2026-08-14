@@ -31,7 +31,12 @@ struct PetHomeView: View {
             scene.scaleMode = .resizeFill
             scene.layout = roomStore.layout
             scene.configure(species: store.pet.species, colorIndex: store.pet.colorIndex)
-            scene.onPetTouched = { store.stroke() }
+            scene.onPetTouched = {
+                // 睡着时戳它 = 叫醒，并维持一段清醒。
+                // 否则站起来后下一次心跳又会把它按回去睡。
+                if store.pet.isDrowsy() { store.wakeUp() }
+                store.stroke()
+            }
             scene.onFurnitureMoved = { id, ratio in
                 roomStore.move(id: id, toXRatio: ratio)
                 scene.layout = roomStore.layout

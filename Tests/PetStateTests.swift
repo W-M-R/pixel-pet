@@ -30,19 +30,46 @@ final class PetStateTests: XCTestCase {
             return state.isDrowsy(at: d)
         }
 
-        // 夜间
+        // 只有深夜睡
         XCTAssertTrue(drowsy(at: 23))
         XCTAssertTrue(drowsy(at: 3))
         XCTAssertTrue(drowsy(at: 6))
-        // 白天清醒
         XCTAssertFalse(drowsy(at: 7))
         XCTAssertFalse(drowsy(at: 12))
-        // 午休
-        XCTAssertTrue(drowsy(at: 14))
-        XCTAssertTrue(drowsy(at: 15))
-        XCTAssertFalse(drowsy(at: 16))
-        // 傍晚清醒
+        // 午休已取消 —— 曾经 14-16 点也睡，导致 42% 时间在趴着
+        XCTAssertFalse(drowsy(at: 14))
+        XCTAssertFalse(drowsy(at: 15))
         XCTAssertFalse(drowsy(at: 21))
+    }
+
+    /// 清醒时间必须占大头。养成类如果大半时间没事可做就废了。
+    func testAwakeMajorityOfDay() {
+        let cal = Calendar.current
+        let state = PetState(species: .cat, colorIndex: 0, name: "T")
+        let awake = (0..<24).filter { h in
+            let d = cal.date(bySettingHour: h, minute: 30, second: 0, of: Date())!
+            return !state.isDrowsy(at: d)
+        }.count
+        XCTAssertEqual(awake, 16, "应清醒 16/24 小时")
+        XCTAssertGreaterThan(Double(awake) / 24.0, 0.6, "清醒时间要超过 60%")
+    }
+
+    /// 回归测试：夜里戳宠物能叫醒，且不会被下一次心跳按回去睡
+    func testWakeUpOverridesNightSchedule() {
+        let cal = Calendar.current
+        let night = cal.date(bySettingHour: 2, minute: 0, second: 0, of: Date())!
+
+        var state = PetState(species: .cat, colorIndex: 0, name: "T", now: night)
+        XCTAssertTrue(state.isDrowsy(at: night), "凌晨2点本该睡")
+
+        // 叫醒
+        state.awakeUntil = night.addingTimeInterval(PetState.NightTime.awakeGrace)
+        XCTAssertFalse(state.isDrowsy(at: night), "叫醒后应清醒")
+        // 宽限期内仍清醒
+        XCTAssertFalse(state.isDrowsy(at: night.addingTimeInterval(10 * 60)))
+        // 宽限期过后回去睡
+        XCTAssertTrue(state.isDrowsy(at: night.addingTimeInterval(25 * 60)),
+                      "宽限期结束应重新犯困")
     }
 
     /// 状态必须按时间戳读时计算，不能存当前值 ——

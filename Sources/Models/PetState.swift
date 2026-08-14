@@ -33,6 +33,10 @@ struct PetState: Codable, Equatable {
     var name: String
 
     var bornAt: Date
+
+    /// 被用户叫醒后维持清醒到这个时刻。nil = 未被叫醒。
+    /// 可选类型，这样旧存档解码时不会失败。
+    var awakeUntil: Date?
     var lastFedAt: Date
     var lastPlayedAt: Date
     var lastCleanedAt: Date
@@ -63,6 +67,7 @@ struct PetState: Codable, Equatable {
         self.lastFedAt = now
         self.lastPlayedAt = now
         self.lastCleanedAt = now
+        self.awakeUntil = nil
     }
 
     // MARK: - 派生数值（读时计算，全部 0...1）
@@ -84,20 +89,34 @@ struct PetState: Codable, Equatable {
 
     /// 是否在打瞌睡。
     ///
-    /// ⚠️ 这里曾经有个很糟的设计：用「距上次玩耍的时间」算精力，
-    /// 结果每次**抚摸**宠物都会调 play() 刷新 lastPlayedAt，
-    /// 于是精力归零、宠物立刻趴下睡 —— 表现为「一点它就睡觉」。
+    /// 这里踩过两次坑，都记下来：
     ///
-    /// 睡觉必须和互动解耦。改成按**自然作息**：宠物在一天里有固定的
-    /// 午休和夜间时段会犯困，跟用户做了什么无关。互动只影响
-    /// 饱食/心情/清洁三条线。
+    /// 1. 最早用「距上次玩耍的时间」算精力，但抚摸也走 play()，
+    ///    于是每次戳宠物都让它秒睡 —— 表现为「一点它就睡觉」。
+    /// 2. 改成纯作息表后又过度修正：夜间 8h + 午休 2h = 42% 的时间
+    ///    在趴着，且不可干预。用户撞上睡眠时段就只能看它躺着，
+    ///    对养成类是致命的 —— 没有任何可做的事。
     ///
-    /// 用真实时间而不是 app 内计时器，是因为 iOS 没有后台定时器，
-    /// 而「现在几点」永远能算准。
+    /// 现在的规则：
+    /// - 只保留**深夜**时段（23:00–06:59），去掉午休
+    /// - 加 `awakeUntil` 让用户能主动叫醒，叫醒后维持一段清醒
+    ///
+    /// 用真实时钟而非 app 内计时器，因为 iOS 没有后台定时器，
+    /// 但「现在几点」永远算得准。
     func isDrowsy(at now: Date = Date()) -> Bool {
+        // 被叫醒后的宽限期内一律清醒
+        if let until = awakeUntil, now < until { return false }
         let hour = Calendar.current.component(.hour, from: now)
-        // 深夜 23:00–06:59 睡觉；午后 14:00–15:59 打个盹
-        return hour >= 23 || hour < 7 || (hour >= 14 && hour < 16)
+        return hour >= NightTime.startHour || hour < NightTime.endHour
+    }
+
+    enum NightTime {
+        static let startHour = 23
+        static let endHour = 7
+
+        /// 叫醒后能保持多久清醒。20 分钟足够玩一会儿，
+        /// 又不会让「夜里宠物在睡觉」这个设定失效。
+        static let awakeGrace: TimeInterval = 20 * 60
     }
 
     /// 综合健康度，给 UI 一个总览

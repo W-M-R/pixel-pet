@@ -24,7 +24,13 @@ final class PetStore {
            let decoded = try? JSONDecoder().decode(PetState.self, from: data) {
             self.pet = decoded
         } else {
+            // 首次启动：新宠物必须立刻写盘。
+            // 之前漏了这一步，导致 bornAt 每次启动都被重置 ——
+            // 宠物永远显示「相伴第 0 天」，存档形同不存在。
             self.pet = PetState(species: .cat, colorIndex: 0, name: "")
+            if let data = try? JSONEncoder().encode(self.pet) {
+                try? data.write(to: fileURL, options: .atomic)
+            }
         }
         startHeartbeat()
     }
@@ -44,11 +50,13 @@ final class PetStore {
     // MARK: - 互动
 
     func feed() {
+        extendAwakeIfNeeded()
         pet.lastFedAt = Date()
         persist()
     }
 
     func play() {
+        extendAwakeIfNeeded()
         pet.lastPlayedAt = Date()
         persist()
     }
@@ -57,7 +65,7 @@ final class PetStore {
     /// 因为要加冷却 —— 连续戳不该无限刷心情。
     ///
     /// 注意：抚摸**不该**让宠物犯困。睡觉由 PetState.isDrowsy 的
-    /// 自然作息决定，和这里无关。
+    /// 作息决定，和这里无关。
     @discardableResult
     func stroke(cooldown: TimeInterval = 1.5) -> Bool {
         let now = Date()
@@ -72,7 +80,24 @@ final class PetStore {
 
     private var lastStrokeAt: Date?
 
+    /// 叫醒宠物，并维持一段清醒。
+    ///
+    /// 没有这个的话，夜里戳宠物它会站起来，然后下一次 10 秒心跳
+    /// 又把它按回去睡 —— 用户完全没法在睡眠时段跟它互动。
+    func wakeUp() {
+        pet.awakeUntil = Date().addingTimeInterval(PetState.NightTime.awakeGrace)
+        persist()
+    }
+
+    /// 任何主动互动都顺带延长清醒时间。
+    /// 喂食/玩耍/洗澡的时候宠物不该还趴着。
+    private func extendAwakeIfNeeded() {
+        guard pet.isDrowsy() else { return }
+        wakeUp()
+    }
+
     func clean() {
+        extendAwakeIfNeeded()
         pet.lastCleanedAt = Date()
         persist()
     }
