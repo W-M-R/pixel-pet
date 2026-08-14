@@ -11,7 +11,9 @@ struct PetHomeView: View {
 
     var body: some View {
         ZStack {
-            roomBackground
+            // 房间由 PetScene 自己画（墙/地板/家具），这样家具与地面的
+            // 相对位置只有一处真相，不会 SwiftUI 和 SpriteKit 两边对不上。
+            Color(red: 0.30, green: 0.33, blue: 0.46).ignoresSafeArea()
 
             SpriteView(scene: scene, options: [.allowsTransparency])
                 .ignoresSafeArea()
@@ -32,6 +34,10 @@ struct PetHomeView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.refresh() }
         }
+        .onChange(of: store.tick) { _, _ in
+            // 精力见底就趴下睡，恢复了自己起来
+            scene.setSleeping(store.pet.energy(at: store.tick) < 0.12)
+        }
         .onChange(of: store.pet.species) { _, s in
             scene.configure(species: s, colorIndex: store.pet.colorIndex)
         }
@@ -42,26 +48,6 @@ struct PetHomeView: View {
             DebugPanel(store: store)
         }
         .preferredColorScheme(.dark)
-    }
-
-    // MARK: - 背景
-
-    /// 第一版用渐变 + 地板色带占位。第 4 步接 Kenney/LPC 家具 tile。
-    private var roomBackground: some View {
-        ZStack {
-            LinearGradient(colors: [Color(red: 0.20, green: 0.24, blue: 0.36),
-                                    Color(red: 0.31, green: 0.28, blue: 0.42)],
-                           startPoint: .top, endPoint: .bottom)
-            VStack {
-                Spacer()
-                Rectangle()
-                    .fill(LinearGradient(colors: [Color(red: 0.42, green: 0.32, blue: 0.26),
-                                                  Color(red: 0.30, green: 0.22, blue: 0.18)],
-                                         startPoint: .top, endPoint: .bottom))
-                    .frame(height: UIScreen.main.bounds.height * 0.28)
-            }
-        }
-        .ignoresSafeArea()
     }
 
     // MARK: - 状态栏

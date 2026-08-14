@@ -18,9 +18,12 @@ final class PetScene: SKScene {
     // MARK: - 状态
 
     private var sheet: SKTexture?
+    private var roomSheet: SKTexture?
+    private var emoteSheet: SKTexture?
     private var pet: SKSpriteNode!
     private var shadow: SKShapeNode!
-    private var bubble: SKLabelNode?
+    private var bubble: SKNode?
+    private var foodNode: SKNode?
 
     private var colorIndex: Int = 0
     private var species: PetSpecies = .cat
@@ -32,6 +35,7 @@ final class PetScene: SKScene {
         case following
         case eating
         case startled
+        case sleeping
     }
     private var behavior: Behavior = .idle
     private var facing: PetSpriteSheet.Facing = .right
@@ -72,6 +76,10 @@ final class PetScene: SKScene {
         guard size.width > 1 else { return }
 
         sheet = PetSpriteSheet.loadSheet(named: species.sheetName)
+        roomSheet = RoomSpriteSheet.loadSheet(named: "house_objects")
+        emoteSheet = RoomSpriteSheet.loadSheet(named: "emotes")
+
+        buildRoom()
 
         // 影子：一个扁椭圆，给宠物一点重量感
         shadow = SKShapeNode(ellipseOf: CGSize(width: 44, height: 12))
@@ -97,10 +105,85 @@ final class PetScene: SKScene {
     override func didChangeSize(_ oldSize: CGSize) {
         super.didChangeSize(oldSize)
         guard size.width > 1 else { return }
-        if pet == nil { buildScene() }
-        else {
-            pet.position.y = groundY
-            syncShadow()
+        // 尺寸变了要重排家具，不然会错位
+        buildScene()
+    }
+
+    // MARK: - 房间
+
+    /// 家具摆放。坐标用屏宽比例，适配不同机型。
+    /// 地毯压在地面线上，其余靠墙贴地。
+    private func buildRoom() {
+        buildFloor()
+        guard let roomSheet else { return }
+        let scale = pixelScale * 0.8   // 家具比宠物略小一点，避免抢主角
+
+        struct Placement {
+            let item: RoomSpriteSheet.Furniture
+            let xRatio: CGFloat
+            let yOffset: CGFloat
+            let z: CGFloat
+            var scaleMul: CGFloat = 1
+        }
+
+        // z < 2 在宠物身后。家具都靠墙贴地，中间留出活动区。
+        // yOffset 是相对地面线，家具底边要落在线上，所以按各自高度往上抬一半。
+        let placements: [Placement] = [
+            Placement(item: .rug,        xRatio: 0.50, yOffset: -16, z: 0, scaleMul: 1.1),
+            Placement(item: .bed,        xRatio: 0.15, yOffset: 30,  z: 1, scaleMul: 0.85),
+            Placement(item: .nightstand, xRatio: 0.33, yOffset: 14,  z: 1, scaleMul: 0.85),
+            Placement(item: .bookshelf,  xRatio: 0.88, yOffset: 34,  z: 1, scaleMul: 0.85),
+            Placement(item: .plant,      xRatio: 0.71, yOffset: 14,  z: 1, scaleMul: 0.85)
+        ]
+
+        for p in placements {
+            let tex = RoomSpriteSheet.furnitureTexture(from: roomSheet, p.item)
+            let node = SKSpriteNode(texture: tex)
+            node.texture?.filteringMode = .nearest
+            node.setScale(scale * p.scaleMul)
+            node.position = CGPoint(x: size.width * p.xRatio, y: groundY + p.yOffset)
+            node.zPosition = p.z
+            addChild(node)
+        }
+    }
+
+    /// 墙 + 地板 + 踢脚线。用纯色块，因为 Home Objects 包里没有墙纸/地板 tile。
+    /// 放在场景里而不是 SwiftUI 层，这样家具和地面的相对位置只有一处真相。
+    private func buildFloor() {
+        let floorH = groundY + 6
+
+        let wall = SKSpriteNode(color: SKColor(red: 0.30, green: 0.33, blue: 0.46, alpha: 1),
+                                size: CGSize(width: size.width, height: size.height - floorH))
+        wall.anchorPoint = CGPoint(x: 0, y: 0)
+        wall.position = CGPoint(x: 0, y: floorH)
+        wall.zPosition = -2
+        addChild(wall)
+
+        let floor = SKSpriteNode(color: SKColor(red: 0.45, green: 0.34, blue: 0.27, alpha: 1),
+                                 size: CGSize(width: size.width, height: floorH))
+        floor.anchorPoint = CGPoint(x: 0, y: 0)
+        floor.position = .zero
+        floor.zPosition = -2
+        addChild(floor)
+
+        // 踢脚线：一条深色窄带，把墙和地分开
+        let skirting = SKSpriteNode(color: SKColor(red: 0.24, green: 0.19, blue: 0.16, alpha: 1),
+                                    size: CGSize(width: size.width, height: 4))
+        skirting.anchorPoint = CGPoint(x: 0, y: 0)
+        skirting.position = CGPoint(x: 0, y: floorH - 2)
+        skirting.zPosition = -1
+        addChild(skirting)
+
+        // 地板缝，给地面一点纵深
+        var y: CGFloat = floorH - 18
+        while y > 0 {
+            let line = SKSpriteNode(color: SKColor(white: 0, alpha: 0.07),
+                                    size: CGSize(width: size.width, height: 2))
+            line.anchorPoint = CGPoint(x: 0, y: 0)
+            line.position = CGPoint(x: 0, y: y)
+            line.zPosition = -1
+            addChild(line)
+            y -= 18
         }
     }
 
@@ -132,6 +215,29 @@ final class PetScene: SKScene {
         pet.run(.sequence([.repeat(chew, count: 4), .run(completion)]), withKey: "anim")
     }
 
+    /// 睡觉姿态。sheet 里**确认没有** sleep 帧（r4 是咀嚼动画），
+    /// 所以这里用侧视帧压扁 + 缓慢呼吸缩放模拟趴着睡。
+    /// 这是临时方案，正解是自绘 2-3 帧趴卧图（见 ROADMAP）。
+    private func applySleepPose() {
+        guard let sheet, let pet else { return }
+        pet.removeAction(forKey: "anim")
+        pet.texture = PetSpriteSheet.texture(from: sheet,
+                                             row: PetSpriteSheet.Facing.right.row,
+                                             column: 0,
+                                             colorIndex: colorIndex)
+        pet.texture?.filteringMode = .nearest
+        // 压扁一点，看起来像趴下
+        pet.yScale = pixelScale * 0.82
+        pet.xScale = pixelScale * 1.04
+
+        let breathe = SKAction.sequence([
+            .scaleY(to: pixelScale * 0.86, duration: 1.4),
+            .scaleY(to: pixelScale * 0.82, duration: 1.4)
+        ])
+        breathe.timingMode = .easeInEaseOut
+        pet.run(.repeatForever(breathe), withKey: "anim")
+    }
+
     /// 站住时把动画停在第一帧。sheet 里没有独立的 idle 动作，
     /// 所以「静止」就是走路动画的第 0 帧。
     private func applyIdlePose() {
@@ -142,6 +248,8 @@ final class PetScene: SKScene {
                                              column: 0,
                                              colorIndex: colorIndex)
         pet.texture?.filteringMode = .nearest
+        // 从睡姿回来要复位缩放
+        pet.setScale(pixelScale)
     }
 
     // MARK: - 行为驱动
@@ -151,7 +259,7 @@ final class PetScene: SKScene {
         let dt = lastUpdate == 0 ? 0 : min(currentTime - lastUpdate, 0.1)
         lastUpdate = currentTime
 
-        if let touchPoint {
+        if let touchPoint, !isSleeping {
             behavior = .following
             moveToward(touchPoint, speed: followSpeed, dt: dt)
         } else {
@@ -167,11 +275,32 @@ final class PetScene: SKScene {
                     applyIdlePose()
                     nextDecisionAt = currentTime + .random(in: 1.2...3.5)
                 }
-            case .eating, .startled:
+            case .eating, .startled, .sleeping:
                 break
             }
         }
         syncShadow()
+    }
+
+    /// 由 UI 层按 PetState.energy 驱动。困了就趴下，休息够了自己起来。
+    func setSleeping(_ sleeping: Bool) {
+        if sleeping {
+            guard !isSleeping else { return }
+            behavior = .sleeping
+            touchPoint = nil
+            applySleepPose()
+            showEmote(.sleep)
+        } else {
+            guard isSleeping else { return }
+            behavior = .idle
+            nextDecisionAt = 0
+            applyIdlePose()
+        }
+    }
+
+    private var isSleeping: Bool {
+        if case .sleeping = behavior { return true }
+        return false
     }
 
     private func decideNextMove(at time: TimeInterval) {
@@ -215,17 +344,57 @@ final class PetScene: SKScene {
     func triggerEat() {
         behavior = .eating
         touchPoint = nil
-        showBubble("🍖")
+        dropFoodBowl()
+        showEmojiBubble("🍖")
         applyEatAnimation { [weak self] in
             guard let self else { return }
+            self.foodNode?.run(.sequence([.fadeOut(withDuration: 0.2), .removeFromParent()]))
+            self.foodNode = nil
             self.behavior = .idle
             self.nextDecisionAt = 0
             self.applyIdlePose()
         }
     }
 
+    /// 喂食时在宠物脚边放一个食盆。
+    /// Home Objects 包里没有食盆，所以用像素矩形手绘一个 —— 12×6 的盆
+    /// 加几块食物色块，保持和 32×32 素材相同的像素密度。
+    private func dropFoodBowl() {
+        foodNode?.removeFromParent()
+
+        let unit = pixelScale          // 1 源像素 = pixelScale pt
+        let container = SKNode()
+
+        func block(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, _ color: SKColor) {
+            let n = SKSpriteNode(color: color, size: CGSize(width: w * unit, height: h * unit))
+            n.anchorPoint = CGPoint(x: 0, y: 0)
+            n.position = CGPoint(x: x * unit, y: y * unit)
+            container.addChild(n)
+        }
+
+        let bowlDark = SKColor(red: 0.42, green: 0.26, blue: 0.20, alpha: 1)
+        let bowlLite = SKColor(red: 0.58, green: 0.38, blue: 0.28, alpha: 1)
+        let kibble   = SKColor(red: 0.80, green: 0.58, blue: 0.30, alpha: 1)
+
+        // 盆身
+        block(0, 0, 12, 2, bowlDark)
+        block(-1, 2, 14, 2, bowlLite)
+        // 食物
+        block(2, 4, 3, 2, kibble)
+        block(6, 4, 4, 2, kibble)
+        block(4, 6, 3, 1, kibble)
+
+        let side: CGFloat = facing == .right ? 22 : -34
+        container.position = CGPoint(x: pet.position.x + side, y: pet.position.y - 24)
+        container.zPosition = 3
+        container.alpha = 0
+        addChild(container)
+        container.run(.fadeIn(withDuration: 0.15))
+        foodNode = container
+    }
+
     func triggerPlay() {
-        showBubble("🎾")
+        showEmote(.music)
         // 蹦两下。像素风里跳跃用位移就够，不需要物理引擎。
         let up = SKAction.moveBy(x: 0, y: 26, duration: 0.16)
         up.timingMode = .easeOut
@@ -235,7 +404,7 @@ final class PetScene: SKScene {
     }
 
     func triggerClean() {
-        showBubble("🛁")
+        showEmote(.droplet)
         let fade = SKAction.sequence([
             .fadeAlpha(to: 0.55, duration: 0.18),
             .fadeAlpha(to: 1, duration: 0.18)
@@ -245,26 +414,66 @@ final class PetScene: SKScene {
 
     func showNeedBubble(_ need: PetNeed) {
         guard need != .content else { return }
-        showBubble(need.emoji)
+        if let emote = need.emote {
+            showEmote(emote)
+        } else {
+            // 这套 emotes 里没有食物图标，饿的时候只能用 emoji
+            showEmojiBubble(need.emoji)
+        }
     }
 
-    private func showBubble(_ text: String) {
-        bubble?.removeFromParent()
+    /// 优先用像素 emote；切图失败就回退到 emoji。
+    /// 回退是必要的 —— emotes.png 的网格是反推出来的，
+    /// 万一某个格子坐标不对，不能让气泡直接消失。
+    private func showEmote(_ emote: RoomSpriteSheet.Emote) {
+        guard let emoteSheet,
+              let tex = RoomSpriteSheet.emoteTexture(from: emoteSheet, emote) else {
+            showEmojiBubble(fallbackEmoji(for: emote))
+            return
+        }
+        let sprite = SKSpriteNode(texture: tex)
+        sprite.texture?.filteringMode = .nearest
+        sprite.setScale(pixelScale * 0.9)
+        present(bubbleNode: sprite)
+    }
+
+    private func showEmojiBubble(_ text: String) {
         let label = SKLabelNode(text: text)
         label.fontSize = 26
         label.verticalAlignmentMode = .center
-        label.position = CGPoint(x: pet.position.x, y: pet.position.y + 62)
-        label.zPosition = 5
-        label.alpha = 0
-        addChild(label)
-        bubble = label
+        present(bubbleNode: label)
+    }
 
-        label.run(.sequence([
+    private func present(bubbleNode node: SKNode) {
+        guard let pet else { return }
+        bubble?.removeFromParent()
+
+        node.position = CGPoint(x: pet.position.x, y: pet.position.y + 60)
+        node.zPosition = 5
+        node.alpha = 0
+        addChild(node)
+        bubble = node
+
+        node.run(.sequence([
             .group([.fadeIn(withDuration: 0.15), .moveBy(x: 0, y: 14, duration: 0.15)]),
-            .wait(forDuration: 1.0),
+            .wait(forDuration: 1.1),
             .group([.fadeOut(withDuration: 0.3), .moveBy(x: 0, y: 10, duration: 0.3)]),
             .removeFromParent()
         ]))
+    }
+
+    private func fallbackEmoji(for emote: RoomSpriteSheet.Emote) -> String {
+        switch emote {
+        case .heart:      return "💗"
+        case .heartbreak: return "💔"
+        case .sleep:      return "💤"
+        case .music:      return "🎵"
+        case .droplet:    return "💧"
+        case .alert:      return "❗"
+        case .question:   return "❓"
+        case .ellipsis:   return "💭"
+        case .sweat:      return "💦"
+        }
     }
 
     // MARK: - 触摸
@@ -274,7 +483,7 @@ final class PetScene: SKScene {
         if pet.frame.insetBy(dx: -14, dy: -14).contains(location) {
             // 直接戳到宠物 → 抚摸反馈
             onPetTouched?()
-            showBubble("💗")
+            showEmote(.heart)
             let squash = SKAction.sequence([
                 .scaleX(to: pixelScale * 1.1, y: pixelScale * 0.9, duration: 0.08),
                 .scale(to: pixelScale, duration: 0.12)
@@ -320,7 +529,7 @@ final class PetScene: SKScene {
         isStartled = true
         behavior = .startled
         touchPoint = nil
-        showBubble("❗")
+        showEmote(.alert)
         let shake = SKAction.sequence([
             .moveBy(x: -6, y: 0, duration: 0.05),
             .moveBy(x: 12, y: 0, duration: 0.05),
