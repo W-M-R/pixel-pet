@@ -150,34 +150,49 @@ enum PetSpriteSheet {
         return result
     }
 
-    /// 每行实际的有效帧数。
+    /// 走路循环的帧序。**3 帧 ping-pong，不是 4 帧循环。**
     ///
-    /// ⚠️ **正视/背视只有 3 帧，第 4 格不可用。**
+    /// ⚠️ **这是修「走路一顿一顿」的关键。**
     ///
-    /// 实测（解码 PNG 逐格量内容宽度，只看第一个毛色）：
+    /// LPC Cats and Dogs 每个方向只有 **3 帧走路**，第 4 格是**坐/趴姿**：
     /// ```
-    /// cat r0 侧视: [24,24,23,23] ✅      dog r0 侧视: [26,27,26,24] ✅
-    /// cat r1 正视: [13,13,13, 0] ⚠️      dog r1 正视: [11,11,11,25] ⚠️
-    /// cat r2 背视: [13,13,13, 0] ⚠️      dog r2 背视: [11,11,11,27] ⚠️
-    /// cat r3 侧视: [23,24,24,23] ✅      dog r3 侧视: [26,27,26,24] ✅
-    /// cat r4 进食: [13,13,13,13] ✅      dog r4 进食: [11,11,11,11] ✅
+    /// cat r0c3: 252px，趴卧（无腿、身体贴地）
+    /// dog r0c3: 259px，同样是趴卧
+    /// cat r1c3 / r2c3: 0px，完全空白
     /// ```
+    /// 按 4 帧循环播的话，左右走每周期会「抽」一下趴下，
+    /// 朝前/朝后走则会闪一帧空白 —— 这就是「一顿一顿」。
     ///
-    /// 猫的第 4 格是**空的**；狗的第 4 格**非空但是另一个姿态**
-    /// （侧躺的狗，宽 25-27px vs 正常 11px）。两种都会造成
-    /// 宠物朝前/朝后走时画面突变 —— 表现为"头尾分离"。
+    /// 正确帧序是 `0 → 1 → 2 → 1` 的往复：col1 是 passing pose（中间姿），
+    /// 往复时出现两次，视觉上就是左右腿交替。素材作者在 OpenGameArt 上传的
+    /// walk 预览 GIF 用的正是这个序列（逐帧解码比对确认），每帧 150ms。
     ///
-    /// 判定不依赖物种名：这是 LPC sheet 的统一布局，
-    /// 加新宠物也适用。
-    static func frameCount(row: Int) -> Int {
-        (row == Facing.front.row || row == Facing.back.row) ? 3 : columnsPerColor
-    }
+    /// 该资源也被 OpenGameArt 收录进「3 Frame Walk Cycles」合集，
+    /// rework 版本的说明写明「3 tiles per direction」。
+    ///
+    /// 不用 `0→1→2` 硬循环：那样从 col2 跳回 col0 是同侧腿突然换边，会跳。
+    static let walkFrameSequence = [0, 1, 2, 1]
+
+    /// 静止姿态用的列。第 4 格是坐/趴姿，正好当 idle。
+    static let idleColumn = 3
+
+    /// 每行实际可用于走路的帧数（3 帧，第 4 格是坐姿不算）
+    static func walkFrameCount(row: Int) -> Int { 3 }
 
     static func frames(from sheet: SKTexture,
                        action: Action,
                        colorIndex: Int) -> [SKTexture] {
-        (0..<frameCount(row: action.row)).map {
-            texture(from: sheet, row: action.row, column: $0, colorIndex: colorIndex)
+        switch action {
+        case .walk:
+            // ping-pong 序列，跳过第 4 格的坐姿
+            return walkFrameSequence.map {
+                texture(from: sheet, row: action.row, column: $0, colorIndex: colorIndex)
+            }
+        case .eat:
+            // 进食行 4 格都是有效的咀嚼帧
+            return (0..<columnsPerColor).map {
+                texture(from: sheet, row: action.row, column: $0, colorIndex: colorIndex)
+            }
         }
     }
 

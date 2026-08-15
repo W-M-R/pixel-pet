@@ -259,20 +259,31 @@ final class FloorPlaneTests: XCTestCase {
 
 final class PetSpriteSheetTests: XCTestCase {
 
-    /// 回归测试：正视/背视只有 3 帧，第 4 格不可用。
+    /// **走路是 3 帧 ping-pong，不是 4 帧循环。**
     ///
-    /// 猫的第 4 格是空的；狗的第 4 格非空但是另一个姿态
-    /// （侧躺的狗，宽 25-27px vs 正常 11px）。
-    /// 两种都会造成宠物朝前/朝后走时画面突变 —— 即「头尾分离」。
-    func testFrontBackHaveThreeFrames() {
-        XCTAssertEqual(PetSpriteSheet.frameCount(row: PetSpriteSheet.Facing.front.row), 3)
-        XCTAssertEqual(PetSpriteSheet.frameCount(row: PetSpriteSheet.Facing.back.row), 3)
+    /// LPC Cats and Dogs 每方向只有 3 帧走路，第 4 格是坐/趴姿
+    /// （cat r0c3 = 252px 的趴卧，cat r1c3/r2c3 = 完全空白）。
+    /// 按 4 帧播会导致走路每周期「抽」一下趴下或闪一帧空白 ——
+    /// 这就是「走路一顿一顿」的根因。防回归。
+    func testWalkUsesThreeFramePingPong() {
+        XCTAssertEqual(PetSpriteSheet.walkFrameSequence, [0, 1, 2, 1])
+        XCTAssertEqual(PetSpriteSheet.walkFrameCount(row: 0), 3)
+        XCTAssertFalse(PetSpriteSheet.walkFrameSequence.contains(PetSpriteSheet.idleColumn),
+                       "走路序列不能包含第 4 格（坐姿）")
     }
 
-    func testSideAndEatHaveFourFrames() {
-        XCTAssertEqual(PetSpriteSheet.frameCount(row: PetSpriteSheet.Facing.right.row), 4)
-        XCTAssertEqual(PetSpriteSheet.frameCount(row: PetSpriteSheet.Facing.left.row), 4)
-        XCTAssertEqual(PetSpriteSheet.frameCount(row: 4), 4, "进食行是 4 帧")
+    /// 帧序必须是往复而非硬循环 —— 首尾都是 passing pose 之外的姿态，
+    /// 中间姿 col1 出现两次
+    func testWalkSequenceIsPingPong() {
+        let seq = PetSpriteSheet.walkFrameSequence
+        XCTAssertEqual(seq.first, 0)
+        XCTAssertEqual(seq.filter { $0 == 1 }.count, 2,
+                       "passing pose 应出现两次")
+    }
+
+    /// idle 用第 4 格（坐姿）
+    func testIdleUsesSittingFrame() {
+        XCTAssertEqual(PetSpriteSheet.idleColumn, 3)
     }
 }
 

@@ -496,14 +496,20 @@ final class PetScene: SKScene {
         }
     }
 
-    /// 站住时把动画停在第一帧。sheet 里没有独立的 idle 动作，
-    /// 所以「静止」就是走路动画的第 0 帧。
+    /// 站住时的姿态。
+    ///
+    /// 用第 4 格 —— 它是坐/趴姿，正是宠物停下来该有的样子。
+    /// （早先误把它当走路帧塞进循环，导致走路时每周期「抽」一下趴下。）
+    ///
+    /// ⚠️ cat 的 r1/r2 第 4 格是空白，所以正/背向时回退到走路第 0 帧。
     private func applyIdlePose() {
         guard let sheet, let pet else { return }
         pet.removeAction(forKey: "anim")
+        let sideways = (facing == .right || facing == .left)
         pet.texture = PetSpriteSheet.texture(from: sheet,
                                              row: facing.row,
-                                             column: 0,
+                                             column: sideways
+                                                ? PetSpriteSheet.idleColumn : 0,
                                              colorIndex: colorIndex)
         pet.texture?.filteringMode = .nearest
         // 从睡姿回来要复位缩放，并保留当前深度的透视缩放
