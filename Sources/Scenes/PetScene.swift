@@ -19,10 +19,6 @@ final class PetScene: SKScene {
     private let walkSpeed: CGFloat = 34      // pt/秒
     private let followSpeed: CGFloat = 82    // 追手指时快一些
 
-    /// 屏幕物理像素密度（3x 屏为 3）。用于把位置吸附到物理像素网格。
-    /// didMove 时从 view 读，默认 3 覆盖主流机型。
-    private var screenScale: CGFloat = 3
-
     /// 宠物的**精确**位置（未吸附）。
     ///
     /// ⚠️ 不能直接把吸附后的值写回 `pet.position` 当作累加基准：
@@ -119,8 +115,6 @@ final class PetScene: SKScene {
     override func didMove(to view: SKView) {
         backgroundColor = .clear
         scaleMode = .resizeFill
-        // 取真实屏幕密度 —— 像素吸附要按物理像素算，不能假设 3x
-        screenScale = view.window?.screen.scale ?? view.contentScaleFactor
         buildScene()
         startMotion()
     }
@@ -185,9 +179,9 @@ final class PetScene: SKScene {
         }
         pet = SKSpriteNode(texture: firstFrame)
         pet.texture?.filteringMode = .nearest
-        pet.setScale(pixelScale * stage.bodyScale)
+        pet.setScale(pixelScale * stage.bodyScale / CGFloat(PetSpriteSheet.prescale))
         exactPosition = floor.clamp(CGPoint(x: size.width / 2, y: floor.y(atDepth: 0.35)))
-        pet.position = snapToPixelGrid(exactPosition)
+        pet.position = exactPosition
         pet.zPosition = 10
         addChild(pet)
 
@@ -523,6 +517,7 @@ final class PetScene: SKScene {
         let dt = lastUpdate == 0 ? 0 : min(currentTime - lastUpdate, 0.1)
         lastUpdate = currentTime
 
+
         if let touchPoint, !isSleeping {
             behavior = .following
             moveToward(touchPoint, speed: followSpeed, dt: dt)
@@ -602,8 +597,7 @@ final class PetScene: SKScene {
             exactPosition = floor.clamp(CGPoint(x: exactPosition.x + dx / dist * step,
                                                 y: exactPosition.y + dy / dist * step))
         }
-        // 精确位置用于累加，显示位置吸附到物理像素网格
-        pet.position = snapToPixelGrid(exactPosition)
+        pet.position = exactPosition
         updateFacing(toward: target)
         applyDepthScale()
         return false
@@ -634,39 +628,22 @@ final class PetScene: SKScene {
     /// 当前深度下宠物应有的基准缩放。所有动画都要以它为基准，
     /// 不能写死 pixelScale —— 否则宠物在远处做动作会突然放大。
     ///
-    /// **已量化**（见 `FloorPlane.scaleQuantum`）：连续缩放会让 nearest
-    /// 采样的像素块边界每帧重新分配，表现为走动时忽大忽小。
+    /// **连续值，不做量化。** 纹理已用 nearest 预放大 `prescale` 倍
+    /// （见 `PetSpriteSheet.prescale`），所以这里要除掉那个倍数，
+    /// 再由 linear 采样平滑地缩到目标尺寸 —— 这样 texel 边界不会
+    /// 随缩放逐帧重新分配，走动就不闪了。
     private var currentPetScale: CGFloat {
-        guard let pet else {
-            return floor.quantizedScale(pixelScale: pixelScale,
-                                        bodyScale: stage.bodyScale,
-                                        depth: 0)
-        }
-        return floor.quantizedScale(pixelScale: pixelScale,
+        let depth = pet == nil ? 0 : floor.depth(atY: exactPosition.y)
+        let target = floor.petScale(pixelScale: pixelScale,
                                     bodyScale: stage.bodyScale,
-                                    depth: floor.depth(atY: exactPosition.y))
+                                    depth: depth)
+        return target / CGFloat(PetSpriteSheet.prescale)
     }
 
     /// 按当前 depth 调整宠物缩放，制造远近感。
-    ///
-    /// 只在缩放**真的变了**时才写 —— setScale 每帧都调会让 SpriteKit
-    /// 重算变换，而量化后大部分帧的值是相同的。
     private func applyDepthScale() {
         guard let pet, !isSleeping else { return }
-        let s = currentPetScale
-        guard abs(pet.xScale - s) > 0.0001 else { return }
-        pet.setScale(s)
-    }
-
-    /// 把宠物位置吸附到物理像素网格。
-    ///
-    /// 光量化缩放还不够：位置落在半个物理像素上时，nearest 采样同样会
-    /// 让整只宠物的像素边界偏移半格，走动时表现为轻微的「果冻感」。
-    /// 按屏幕的 contentScaleFactor 取整，保证边界始终落在物理像素上。
-    private func snapToPixelGrid(_ p: CGPoint) -> CGPoint {
-        guard screenScale > 0 else { return p }
-        return CGPoint(x: (p.x * screenScale).rounded() / screenScale,
-                       y: (p.y * screenScale).rounded() / screenScale)
+        pet.setScale(currentPetScale)
     }
 
     private func syncShadow() {
@@ -712,10 +689,18 @@ final class PetScene: SKScene {
     private var petFeetY: CGFloat {
         let frameH = PetSpriteSheet.frameSize.height        // 32
         let bottomPadding: CGFloat = 5                      // 实测内容底边 y=26
-        // 用节点实际缩放，而不是 pixelScale —— 宠物在远处会被缩小，
-        // 写死 pixelScale 会让影子和食盆在远处脱开脚底。
-        let effectiveScale = pet.yScale
-        return pet.position.y - (frameH / 2 - bottomPadding) * effectiveScale
+        // ⚠️ 纹理已预放大 prescale 倍，pet.yScale 相应变小了同样倍数。
+        // 「1 源像素在屏幕上占多少 pt」= yScale × prescale。
+        return pet.position.y
+            - (frameH / 2 - bottomPadding) * sourcePixelUnit
+    }
+
+    /// 1 个**源图**像素当前在屏幕上占多少 pt。
+    ///
+    /// 纹理预放大后 `pet.xScale` 不再等于「源像素 → pt」的倍数，
+    /// 差了 `prescale`。所有拿源图坐标算屏幕位置的地方都要用这个。
+    private var sourcePixelUnit: CGFloat {
+        pet.yScale * CGFloat(PetSpriteSheet.prescale)
     }
 
     /// 喂食时在宠物脚边放一个食盆。
@@ -724,8 +709,9 @@ final class PetScene: SKScene {
     private func dropFoodBowl() {
         foodNode?.removeFromParent()
 
-        // 食盆和宠物同深度，所以用宠物当前缩放，不是 pixelScale
-        let u = currentPetScale        // 1 源像素 = u pt
+        // 食盆和宠物同深度，所以用宠物当前缩放，不是 pixelScale。
+        // 注意要换算成「源像素 → pt」，纹理预放大不影响手绘元素。
+        let u = sourcePixelUnit        // 1 源像素 = u pt
         let container = SKNode()
 
         /// 以「盆底左边缘」为原点画，方便对齐地面
@@ -775,7 +761,7 @@ final class PetScene: SKScene {
         // moveBy 一旦被打断（中途切睡觉/换宠物），宠物会永久停在半空。
         // 基准取**吸附后的显示位置**，和 moveToward 写入的值一致，
         // 否则蹦完会和 exactPosition 差半个像素，下一帧突跳一下。
-        let baseY = snapToPixelGrid(exactPosition).y
+        let baseY = exactPosition.y
         let hop = SKAction.sequence([
             {
                 let a = SKAction.moveTo(y: baseY + pixelScale * 7, duration: 0.16)

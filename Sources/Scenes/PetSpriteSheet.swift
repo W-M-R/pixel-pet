@@ -62,6 +62,32 @@ enum PetSpriteSheet {
         (0..<colorCount).map { ColorVariant(index: $0) }
     }
 
+    /// 预放大倍数。
+    ///
+    /// **这是修「走动时一闪一闪」的关键。**
+    ///
+    /// 问题的本质：宠物按屏幕 y 连续缩放（2.5D 伪深度），而 nearest 采样下
+    /// 非整数缩放会让 texel 落在屏幕像素边界上 —— 部分 texel 渲染成 2 个
+    /// 物理像素、部分 1 个，且「哪些变胖」随缩放连续漂移，逐帧重新分配。
+    ///
+    /// 试过把缩放量化到 1/3 网格（Unity Pixel Perfect Camera 的思路），
+    /// 但那套方案的前提是**全场景共用一个像素网格**；伪深度让每只宠物在
+    /// 不同 y 有不同缩放，前提不成立。实测结果是把连续抖动换成了 11% 的
+    /// 单步跳档（young 只有 3.0 / 2.667 / 2.333 三档），反而更刺眼。
+    ///
+    /// 正解是**先用 nearest 整数放大到 8 倍**得到一张「像素块已经烘死」的
+    /// 大图，再让 SpriteKit 用 **linear** 对它做连续缩小。
+    /// 这样 texel 边界永远由 bilinear 平滑处理，不存在帧间跳变。
+    ///
+    /// 代价是显存 ×64，但 32×32 的素材放大到 256×256 只有 256KB 级，可忽略。
+    static let prescale = 8
+
+    /// 预放大后的纹理缓存。
+    ///
+    /// key 要包含所有影响像素的因素。不缓存会每帧重新走 CGContext 放大，
+    /// 那比抖动问题严重得多。
+    private static var cache: [String: SKTexture] = [:]
+
     static func texture(from sheet: SKTexture,
                         row: Int,
                         column: Int,
@@ -81,9 +107,47 @@ enum PetSpriteSheet {
                           width: frameSize.width / sheetW,
                           height: frameSize.height / sheetH)
 
-        let tex = SKTexture(rect: rect, in: sheet)
-        tex.filteringMode = .nearest
-        return tex
+        let sub = SKTexture(rect: rect, in: sheet)
+        sub.filteringMode = .nearest
+
+        // 缓存键：sheet 尺寸能区分不同阶段的 sheet（它们尺寸相同但内容不同，
+        // 所以还要带上 description 里的纹理标识）
+        let key = "\(sheet.description)|\(row)|\(column)|\(colorIndex)"
+        if let hit = cache[key] { return hit }
+
+        let scaled = upscaled(sub)
+        cache[key] = scaled
+        return scaled
+    }
+
+    /// 用 nearest 把小图整数放大，结果交给 linear 做连续缩放。
+    ///
+    /// `interpolationQuality = .none` 是关键 —— 放大这一步必须保持硬边，
+    /// 否则像素画会先被糊一次。
+    static func upscaled(_ tex: SKTexture) -> SKTexture {
+        let src = tex.cgImage()
+        let w = Int(frameSize.width) * prescale
+        let h = Int(frameSize.height) * prescale
+
+        guard let ctx = CGContext(data: nil, width: w, height: h,
+                                  bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else {
+            tex.filteringMode = .nearest
+            return tex
+        }
+        ctx.interpolationQuality = .none      // 硬边放大，别插值
+        ctx.draw(src, in: CGRect(x: 0, y: 0, width: w, height: h))
+
+        guard let out = ctx.makeImage() else {
+            tex.filteringMode = .nearest
+            return tex
+        }
+        let result = SKTexture(cgImage: out)
+        // 放大图用 linear：缩小时由 bilinear 平滑 texel 边界，消除逐帧跳变
+        result.filteringMode = .linear
+        return result
     }
 
     /// 每行实际的有效帧数。

@@ -176,77 +176,70 @@ final class FloorPlaneTests: XCTestCase {
         XCTAssertEqual(f.clamp(CGPoint(x: 200, y: -50)).y, 50, accuracy: 0.001)
     }
 
-    // MARK: - 缩放量化（修「走动时忽大忽小」）
+    // MARK: - 深度缩放（修「走动时一闪一闪」）
 
-    /// 量化后的缩放必须是 scaleQuantum 的整数倍。
+    /// 缩放必须**连续**，不能有离散跳档。
     ///
-    /// 这条守的是像素完美：3x 屏下 1pt = 3 物理像素，scale 为 1/3 的倍数时
-    /// 每个源像素恰好占整数个物理像素，nearest 采样才不会抖。
-    func testQuantizedScaleLandsOnGrid() {
-        let f = makeFloor()
-        let q = f.scaleQuantum
-        for d in stride(from: 0.0, through: 1.0, by: 0.02) {
-            let s = f.quantizedScale(pixelScale: 4, bodyScale: 1.0, depth: CGFloat(d))
-            let steps = s / q
-            XCTAssertEqual(steps, steps.rounded(), accuracy: 0.0001,
-                           "depth \(d) 的缩放 \(s) 不在 1/\(1/q) 网格上")
-        }
-    }
-
-    /// **核心断言**：走动时缩放不能每帧都变。
+    /// 曾经把缩放量化到 1/3 网格（Unity Pixel Perfect Camera 的思路），
+    /// 但那套方案要求全场景共用一个像素网格 —— 伪深度让每只宠物在不同 y
+    /// 有不同缩放，前提不成立。实测 young 全程只剩 3.0/2.667/2.333 三档，
+    /// 相邻档差 11%，走动时「猛地缩一下」，比原本的抖动更刺眼。
     ///
-    /// 连续缩放是「忽大忽小」的根因 —— nearest 采样下像素块边界会随
-    /// scale 连续漂移。量化后全程只允许少数几次跳变。
-    func testQuantizedScaleChangesRarely() {
+    /// 现在靠 `PetSpriteSheet.prescale`（nearest 整数预放大 + linear 连续
+    /// 缩小）解决采样问题，缩放本身保持连续。这个测试防量化回归。
+    func testPetScaleIsContinuous() {
         let f = makeFloor()
-        var changes = 0
-        var prev = f.quantizedScale(pixelScale: 4, bodyScale: 1.0, depth: 0)
-        // 模拟走过整个纵深，100 个采样点
-        for i in 1...100 {
-            let s = f.quantizedScale(pixelScale: 4, bodyScale: 1.0,
-                                     depth: CGFloat(i) / 100)
-            if abs(s - prev) > 0.0001 { changes += 1; prev = s }
-        }
-        XCTAssertLessThanOrEqual(changes, 4,
-                                 "走过全场只该切换几档，实际切了 \(changes) 次")
-        XCTAssertGreaterThan(changes, 0, "完全不变就失去纵深感了")
-    }
-
-    /// 量化不能破坏「远处更小」这个前提
-    func testQuantizedScaleStillShrinksWithDepth() {
-        let f = makeFloor()
-        let near = f.quantizedScale(pixelScale: 4, bodyScale: 1.0, depth: 0)
-        let far = f.quantizedScale(pixelScale: 4, bodyScale: 1.0, depth: 1)
-        XCTAssertLessThan(far, near, "远处仍须更小")
-    }
-
-    /// 单调性：depth 增大，缩放不能变大
-    func testQuantizedScaleIsMonotonic() {
-        let f = makeFloor()
-        var prev = CGFloat.greatestFiniteMagnitude
+        var distinct = Set<CGFloat>()
         for i in 0...100 {
-            let s = f.quantizedScale(pixelScale: 4, bodyScale: 1.0,
-                                     depth: CGFloat(i) / 100)
-            XCTAssertLessThanOrEqual(s, prev + 0.0001, "缩放不能随深度变大")
+            let s = f.petScale(pixelScale: 4, bodyScale: 1.0,
+                               depth: CGFloat(i) / 100)
+            distinct.insert((s * 10000).rounded() / 10000)
+        }
+        XCTAssertGreaterThan(distinct.count, 50,
+                             "缩放应连续变化，出现离散档位说明又被量化了")
+    }
+
+    /// 相邻深度的缩放差必须很小 —— 大跳变就是肉眼可见的「闪」
+    func testPetScaleHasNoLargeJumps() {
+        let f = makeFloor()
+        var prev = f.petScale(pixelScale: 4, bodyScale: 1.0, depth: 0)
+        for i in 1...200 {
+            let s = f.petScale(pixelScale: 4, bodyScale: 1.0,
+                               depth: CGFloat(i) / 200)
+            let jump = abs(s - prev) / prev
+            XCTAssertLessThan(jump, 0.01,
+                              "depth \(Double(i)/200) 处缩放跳变 \(jump * 100)%，应 <1%")
             prev = s
         }
     }
 
-    /// 四个生命阶段都要落在网格上
-    func testQuantizedScaleForAllStages() {
+    /// 远处仍须更小
+    func testPetScaleShrinksWithDepth() {
         let f = makeFloor()
-        let q = f.scaleQuantum
-        for stage in PetStage.allCases {
-            for d in [0.0, 0.5, 1.0] {
-                let s = f.quantizedScale(pixelScale: 4,
-                                         bodyScale: stage.bodyScale,
-                                         depth: CGFloat(d))
-                let steps = s / q
-                XCTAssertEqual(steps, steps.rounded(), accuracy: 0.0001,
-                               "\(stage) depth \(d) 缩放 \(s) 不在网格上")
-                XCTAssertGreaterThan(s, 0)
-            }
+        let near = f.petScale(pixelScale: 4, bodyScale: 1.0, depth: 0)
+        let far = f.petScale(pixelScale: 4, bodyScale: 1.0, depth: 1)
+        XCTAssertLessThan(far, near)
+        XCTAssertEqual(far / near, f.minScaleRatio, accuracy: 0.001)
+    }
+
+    /// 单调性
+    func testPetScaleIsMonotonic() {
+        let f = makeFloor()
+        var prev = CGFloat.greatestFiniteMagnitude
+        for i in 0...100 {
+            let s = f.petScale(pixelScale: 4, bodyScale: 1.0,
+                               depth: CGFloat(i) / 100)
+            XCTAssertLessThanOrEqual(s, prev + 0.0001)
+            prev = s
         }
+    }
+
+    /// 预放大倍数必须是整数且 >1 —— 非整数放大会先糊一次像素画
+    func testPrescaleIsIntegerAndGreaterThanOne() {
+        XCTAssertGreaterThan(PetSpriteSheet.prescale, 1)
+        XCTAssertEqual(PetSpriteSheet.prescale,
+                       Int(PetSpriteSheet.prescale),
+                       "必须是整数倍放大")
     }
 
     func testRandomPointsAlwaysOnFloor() {
