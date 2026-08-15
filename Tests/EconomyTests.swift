@@ -289,14 +289,16 @@ final class EconomyTests: XCTestCase {
 
     // MARK: - 辅助
 
+    // 构造转发到 Fixture（见 Fixture.swift）—— RewardContext 有 7 个字段
+    // 且按位置构造，加字段时只改 Fixture 一处
+
     private func ctx(offlineHours: Double,
                      satiety: Double = 0.5,
                      mood: Double = 0.5,
                      remainingCap: Int = 9999) -> RewardContext {
-        RewardContext(pet: PetState(), wallet: PetWallet(), now: Date(),
-                      offlineHours: offlineHours,
-                      avgSatiety: satiety, avgMood: mood,
-                      remainingCap: remainingCap)
+        Fixture.rewardContext(offlineHours: offlineHours,
+                              satiety: satiety, mood: mood,
+                              remainingCap: remainingCap)
     }
 
     /// 用真实衰减算出平均状态的上下文
@@ -304,14 +306,9 @@ final class EconomyTests: XCTestCase {
                          wallet: PetWallet = PetWallet(),
                          moodOverride: Double? = nil,
                          remainingCap: Int = 9999) -> RewardContext {
-        let pet = PetState()
-        return RewardContext(
-            pet: pet, wallet: wallet, now: Date(), offlineHours: h,
-            avgSatiety: RewardEngine.averageLevel(
-                offlineHours: h, cycleHours: pet.stage.hungerCycleHours),
-            avgMood: moodOverride
-                ?? RewardEngine.averageLevel(offlineHours: h, cycleHours: 18),
-            remainingCap: remainingCap)
+        Fixture.realRewardContext(offlineHours: h, wallet: wallet,
+                                  moodOverride: moodOverride,
+                                  remainingCap: remainingCap)
     }
 
     /// 模拟一整天：均匀分 n 段离线，算「看家收入 − 粮钱」。
@@ -409,10 +406,8 @@ final class PetChatPolicyTests: XCTestCase {
     /// 中英文的状态描述都要非空，且语种正确 —— prompt 用母语指令，
     /// 否则模型会输出中英混杂。
     func testPromptDescriptionsAreLocalized() {
-        let ctx = PetLineContext(
-            name: "小咪", species: "cat", chineseSpecies: "小猫",
-            satiety: 0.2, mood: 0.9,
-            hygiene: 0.8, isDrowsy: false, ageInDays: 10, trigger: .fed)
+        let ctx = Fixture.lineContext(satiety: 0.2, mood: 0.9, hygiene: 0.8,
+                                      ageInDays: 10, trigger: .fed)
 
         let zh = ctx.chineseStateDescription
         let en = ctx.englishStateDescription

@@ -6,28 +6,8 @@ import XCTest
 /// **这些测试原来写不出来** —— `init()` 直接读 `applicationSupportDirectory`，
 /// 无法注入路径，所以 299 行的状态变更 + 结算编排零覆盖。
 /// 现在 init 接受 `directory:`，测试用临时目录独立跑。
-@MainActor
-final class PetStoreTests: XCTestCase {
-
-    private var dir: URL!
-
-    override func setUp() {
-        super.setUp()
-        dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-    }
-
-    override func tearDown() {
-        try? FileManager.default.removeItem(at: dir)
-        super.tearDown()
-    }
-
-    /// 关掉通知与心跳 —— 前者有系统副作用，后者会让测试留下定时器
-    private func makeStore() -> PetStore {
-        PetStore(directory: dir,
-                 schedulesNotifications: false,
-                 runsHeartbeat: false)
-    }
+/// 临时目录与 store 构造在 `StoreTestCase`（见 Fixture.swift）
+final class PetStoreTests: StoreTestCase {
 
     // MARK: - 互动表
 
@@ -258,27 +238,7 @@ final class PetStoreTests: XCTestCase {
 ///
 /// 原来这段时序在 `PetHomeView.onAppear` 里（42 行，含两层嵌套
 /// asyncAfter），和视图声明混在一起，完全无法测。
-@MainActor
-final class OpeningSequenceTests: XCTestCase {
-
-    private var dir: URL!
-
-    override func setUp() {
-        super.setUp()
-        dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-    }
-
-    override func tearDown() {
-        try? FileManager.default.removeItem(at: dir)
-        super.tearDown()
-    }
-
-    private func makeStore() -> PetStore {
-        PetStore(directory: dir,
-                 schedulesNotifications: false,
-                 runsHeartbeat: false)
-    }
+final class OpeningSequenceTests: StoreTestCase {
 
     /// 无收益时 messages 为空 —— 调用方据此走日常问候
     func testNoSettlementYieldsNoMessages() {
