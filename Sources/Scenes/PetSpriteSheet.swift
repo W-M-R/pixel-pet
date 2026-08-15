@@ -216,9 +216,17 @@ enum PetSpriteSheet {
                               y: CGFloat(flippedRow) * frameSize.height / sheetH,
                               width: frameSize.width / sheetW,
                               height: frameSize.height / sheetH)
-            let tex = SKTexture(rect: rect, in: sheet)
-            tex.filteringMode = .nearest
-            return tex
+            let sub = SKTexture(rect: rect, in: sheet)
+            sub.filteringMode = .nearest
+
+            // ⚠️ 必须和走路帧一样做预放大。
+            // 节点缩放已经按 prescale 除过（见 PetScene.currentPetScale），
+            // 这里若返回原尺寸纹理，睡觉时宠物会缩到 1/prescale。
+            let key = "sleep|\(sheet.description)|\(row)|\(colorIndex)"
+            if let hit = cache[key] { return hit }
+            let scaled = upscaled(sub)
+            cache[key] = scaled
+            return scaled
         }
     }
 
