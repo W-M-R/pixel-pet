@@ -31,8 +31,12 @@ struct RewardContext {
     let now: Date
     /// 距上次结算的小时数
     let offlineHours: Double
-    /// 离线期间的平均状态（0...1），见 01-economy.md
-    let avgWellbeing: Double
+    /// 离线期间三维的平均状态（各 0...1），见 01-economy.md。
+    /// 分开传而不是先合成一个数 —— 合成规则属于奖励规则的职责，
+    /// 不同规则可能想用不同的权重。
+    let avgSatiety: Double
+    let avgMood: Double
+    let avgHygiene: Double
     /// 已领取的一次性奖励 ID
     let claimed: Set<String>
 }
@@ -81,7 +85,9 @@ struct RewardSettlement {
 ### 2. OfflineCareReward（看家）
 
 ```
-min(离线小时, 10) × 1.0 × (0.4 + 平均状态 × 1.1) × buff倍率
+min(离线小时, 10) × 0.9 × 状态系数 × buff倍率
+
+状态系数 = 0.3 + (0.70+0.30×饱食)×(0.45+0.55×心情)×(0.85+0.15×清洁) × 1.05
 ```
 
 `isOneTime = false`。详细推导见 [01-economy.md](01-economy.md)。
