@@ -25,45 +25,51 @@ struct CheckInReward: RewardRule {
 
 // MARK: - 离线看家收益
 
-/// 宠物在你离开时看家赚钱。
+/// 宠物在你离开时看家赚钱。**每日额度制。**
 ///
 /// ```
-/// 硬币 = min(离线小时, 10) × 0.9 × 状态系数 × buff倍率
-/// 状态系数 = 0.3 + (三维压缩乘积) × 1.05        // 0.58 ~ 1.35
+/// 硬币 = min(今日剩余额度, 每日额度 × 达成率 × buff)
+/// 达成率 = 0.05 + 0.30 × (0.40×饱食 + 0.60×心情)²      // 0.05 ~ 0.35
+/// 每日额度 = PetStage.dailyCap                        // 幼170 → 成年225
 /// ```
 ///
-/// 完整推导见 docs/01-economy.md。
+/// 为什么是额度制而不是「按小时 × 速率」：
+/// 旧公式下支出随喂食次数线性增长，收入却被 10h 上限压平，
+/// 导致「照顾越勤越亏」。按 Daniel Cook 的 source/sink 幂次分类，
+/// 这是 capped source 配 repeatable sink 的经典失配 ——
+/// 靠调单价永远调不平，必须让两端幂次对齐。详见 docs/04-balance.md。
+///
+/// **没有单次领取上限。** 早先加过（额度×15%），但实测它会盖住达成率：
+/// 任何正常状态下都是单次上限在起作用，状态好坏完全不影响收益，
+/// 把「照顾好宠物=赚得多」彻底架空了。防刷币交给额度封顶就够。
 struct OfflineCareReward: RewardRule {
     let id = "offline_care"
     let nameKey = "reward.offline_care"
     let isOneTime = false
+    /// 唯一占额度的规则
+    let countsTowardDailyCap = true
 
-    static let ratePerHour: Double = 9.0
-    static let maxHours: Double = 10
-
-    /// 三维压缩区间。**宽度即权重。**
+    /// 达成率区间。
     ///
-    /// 为什么用乘法而不是加权平均：清洁周期 72h，离线 24h 时它还有 0.83，
-    /// 等权平均会被它拉高，掩盖饱食只剩 0.17 的事实。
-    /// 但纯乘法太狠（24h 只剩 0.05，收益归零），所以先压缩到不触底的区间。
-    enum Weight {
-        /// 心情最重 —— 情绪价值是宠物 app 的核心
-        static let moodBase = 0.45, moodSpan = 0.55
-        /// 饱食中等 —— 有免费剩饭保底，不该惩罚过重
-        static let satietyBase = 0.70, satietySpan = 0.30
-        /// 清洁最轻 —— 周期 72h，本就是低频维护
-        static let hygieneBase = 0.85, hygieneSpan = 0.15
+    /// 上界 0.35 而非 1.0 是为了让「一次结算领不满额度」——
+    /// 否则开一次和开五次收入相同，激励结构失效。
+    /// 0.35 对应约 3 次结算才能领满，正好落在目标节奏（4-5 次/天）之下。
+    enum Rate {
+        static let floor = 0.05
+        static let span = 0.30
 
-        static let coefBase = 0.30, coefSpan = 1.05
+        /// 心情权重高于饱食 —— 情绪价值是宠物 app 的核心。
+        static let satietyWeight = 0.40
+        static let moodWeight = 0.60
     }
 
-    /// 状态系数，范围 0.58 ~ 1.35
-    static func stateCoefficient(satiety: Double, mood: Double, hygiene: Double) -> Double {
-        let s = clamp(satiety), m = clamp(mood), h = clamp(hygiene)
-        let factor = (Weight.satietyBase + Weight.satietySpan * s)
-            * (Weight.moodBase + Weight.moodSpan * m)
-            * (Weight.hygieneBase + Weight.hygieneSpan * h)
-        return Weight.coefBase + factor * Weight.coefSpan
+    /// 达成率，范围 0.05 ~ 0.35。
+    ///
+    /// 用平方而非线性：线性只能拉开 2.2 倍差距，压不住喂食支出的增长。
+    /// 平方后勤快照顾（0.30）与放养（0.08）差约 4 倍。
+    static func achievementRate(satiety: Double, mood: Double) -> Double {
+        let blend = Rate.satietyWeight * clamp(satiety) + Rate.moodWeight * clamp(mood)
+        return Rate.floor + Rate.span * blend * blend
     }
 
     private static func clamp(_ v: Double) -> Double { min(1, max(0, v)) }
@@ -71,14 +77,13 @@ struct OfflineCareReward: RewardRule {
     func evaluate(_ ctx: RewardContext) -> RewardOutcome? {
         // 太短不结算，避免频繁开关刷出零碎收益
         guard ctx.offlineHours >= 0.5 else { return nil }
+        // 今日额度已用完
+        guard ctx.remainingCap > 0 else { return nil }
 
-        let hours = min(ctx.offlineHours, Self.maxHours)
-        let coef = Self.stateCoefficient(satiety: ctx.avgSatiety,
-                                         mood: ctx.avgMood,
-                                         hygiene: ctx.avgHygiene)
+        let rate = Self.achievementRate(satiety: ctx.avgSatiety, mood: ctx.avgMood)
         let boost = ctx.wallet.boostMultiplier(at: ctx.now)
-        let raw = hours * Self.ratePerHour * coef * boost
-        let coins = Int(raw.rounded())
+        let want = Double(ctx.pet.stage.dailyCap) * rate * boost
+        let coins = min(ctx.remainingCap, Int(want.rounded()))
         guard coins > 0 else { return nil }
 
         return RewardOutcome(coins: coins,

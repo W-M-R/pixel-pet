@@ -31,12 +31,13 @@ struct RewardContext {
     let now: Date
     /// 距上次结算的小时数
     let offlineHours: Double
-    /// 离线期间三维的平均状态（各 0...1），见 01-economy.md。
-    /// 分开传而不是先合成一个数 —— 合成规则属于奖励规则的职责，
-    /// 不同规则可能想用不同的权重。
+    /// 离线期间的平均饱食与心情（各 0...1），见 01-economy.md。
+    /// 分开传而不是先合成一个数 —— 合成规则属于奖励规则的职责。
+    /// 清洁不在这里：72h 周期让它长期接近 1.0，只会稀释另两维。
     let avgSatiety: Double
     let avgMood: Double
-    let avgHygiene: Double
+    /// 今日剩余收益额度
+    let remainingCap: Int
     /// 已领取的一次性奖励 ID
     let claimed: Set<String>
 }
@@ -80,15 +81,19 @@ struct RewardSettlement {
 每次打开 +10 枚，要求距上次结算 ≥ 5 小时
 ```
 
-`isOneTime = false`。5 小时限制防无脑开关刷币。
+`isOneTime = false`，`countsTowardDailyCap = false` —— **不占额度**，
+否则「领了上线奖励反而少赚看家钱」。5 小时限制防无脑开关刷币。
 
 ### 2. OfflineCareReward（看家）
 
 ```
-min(离线小时, 10) × 0.9 × 状态系数 × buff倍率
+min(今日剩余额度, 每日额度 × 达成率 × buff倍率)
 
-状态系数 = 0.3 + (0.70+0.30×饱食)×(0.45+0.55×心情)×(0.85+0.15×清洁) × 1.05
+每日额度 = PetStage.dailyCap                      // 幼170 → 成年225
+达成率   = 0.05 + 0.30 × (0.40×饱食 + 0.60×心情)²   // 0.05 ~ 0.35
 ```
+
+`countsTowardDailyCap = true` —— 唯一占额度的规则。
 
 `isOneTime = false`。详细推导见 [01-economy.md](01-economy.md)。
 

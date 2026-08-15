@@ -112,8 +112,10 @@ final class PetStore {
         let result = RewardEngine.default.settle(ctx)
         guard !result.isEmpty else { return nil }
 
-        wallet.coins += result.totalCoins
-        wallet.totalEarned += result.totalCoins
+        // 看家收益走 recordEarning（累加今日额度、处理跨日重置）；
+        // 上线奖励与成就不占额度，走 recordBonus。
+        wallet.recordEarning(result.cappedCoins, at: now)
+        wallet.recordBonus(result.totalCoins - result.cappedCoins)
         for id in result.newlyClaimed { wallet.claimedRewards.insert(id) }
         wallet.lastCollectedAt = now
         persist()
@@ -149,24 +151,31 @@ final class PetStore {
 
     // MARK: - 互动
 
-    /// 能否买得起
-    func canAfford(_ food: FoodItem) -> Bool {
-        food.isFree || wallet.coins >= food.price
+    /// 能否买得起。
+    ///
+    /// 按量计价，所以价格取决于**当前饱食度** —— 越饱越便宜。
+    func canAfford(_ food: FoodItem, at now: Date = Date()) -> Bool {
+        wallet.coins >= food.cost(currentSatiety: pet.satiety(at: now))
     }
 
     /// 喂食。返回是否成功（钱不够会失败）。
     @discardableResult
     func feed(_ food: FoodItem = .kibble) -> Bool {
-        guard canAfford(food) else { return false }
         extendAwakeIfNeeded()
         let now = Date()
 
-        if !food.isFree { wallet.coins -= food.price }
+        // ⚠️ 顺序要紧：按量计价必须**先读饱食度**再算价扣钱。
+        // 之前是先扣钱后读饱食，算出来的价基准是错的。
+        let before = pet.satiety(at: now)
+        let price = food.cost(currentSatiety: before)
+        guard wallet.coins >= price else { return false }
+        wallet.coins -= price
 
         // 饱食：加到当前值并封顶。
         // 用「反推 lastFedAt」而不是存数值 —— 状态必须保持时间戳驱动。
-        let after = min(1.0, pet.satiety(at: now) + food.satietyRestore)
-        pet.lastFedAt = now.addingTimeInterval(-(1 - after) * PetState.Decay.hunger)
+        let after = min(1.0, before + food.satietyRestore)
+        pet.lastFedAt = now.addingTimeInterval(
+            -(1 - after) * PetState.Decay.hunger(for: pet.stage))
 
         if food.moodBonus > 0 {
             let m = min(1.0, pet.mood(at: now) + food.moodBonus)

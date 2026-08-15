@@ -81,13 +81,16 @@ final class PetStateTests: XCTestCase {
         XCTAssertEqual(state.satiety(at: now), 1.0, accuracy: 0.001,
                        "刚喂完应该是满的")
 
+        // 周期随生命阶段变化 —— 新生宠物是幼年期（12h），不是成年的 8h
+        let span = PetState.Decay.hunger(for: state.stage)
+
         // 把喂食时间往前推到饱食周期的一半
-        state.lastFedAt = now.addingTimeInterval(-PetState.Decay.hunger / 2)
+        state.lastFedAt = now.addingTimeInterval(-span / 2)
         XCTAssertEqual(state.satiety(at: now), 0.5, accuracy: 0.01,
                        "过了一半周期应该剩一半")
 
         // 超过整个周期应该钳到 0，不能变负
-        state.lastFedAt = now.addingTimeInterval(-PetState.Decay.hunger * 3)
+        state.lastFedAt = now.addingTimeInterval(-span * 3)
         XCTAssertEqual(state.satiety(at: now), 0.0, accuracy: 0.001)
     }
 
@@ -97,7 +100,8 @@ final class PetStateTests: XCTestCase {
         let nightTime = cal.date(bySettingHour: 2, minute: 0, second: 0, of: Date())!
 
         var state = PetState(species: .cat, colorIndex: 0, name: "T", now: nightTime)
-        state.lastFedAt = nightTime.addingTimeInterval(-PetState.Decay.hunger)
+        state.lastFedAt = nightTime.addingTimeInterval(
+            -PetState.Decay.hunger(for: state.stage))
 
         XCTAssertTrue(state.isDrowsy(at: nightTime), "凌晨2点本该犯困")
         XCTAssertEqual(state.dominantNeed(at: nightTime), .hungry,

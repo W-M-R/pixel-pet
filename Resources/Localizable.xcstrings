@@ -753,22 +753,6 @@
         }
       }
     },
-    "food.wasteful": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "A bit wasteful now"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "现在吃有点浪费"
-          }
-        }
-      }
-    },
     "home.age": {
       "localizations": {
         "en": {

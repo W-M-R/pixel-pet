@@ -9,13 +9,19 @@ struct RewardContext {
     /// 距上次结算的小时数
     let offlineHours: Double
 
-    /// 离线期间三维的平均状态（各 0...1）。
+    /// 离线期间的平均饱食与心情（各 0...1）。
     ///
     /// 分开传而不是先合成一个数 —— 合成规则属于奖励规则自己的职责，
     /// 不同规则可能想用不同权重（比如将来加「只看心情的奖励」）。
+    ///
+    /// **清洁不在这里**：72h 周期让它长期接近 1.0，放进收益公式只会
+    /// 稀释另两维（离线 24h 时清洁还有 0.83，饱食只剩 0.17）。
+    /// 它仍是照料内容 —— 状态条、台词、洗澡成就都保留，只是不折算成钱。
     let avgSatiety: Double
     let avgMood: Double
-    let avgHygiene: Double
+
+    /// 今日剩余收益额度。额度制的核心约束，由 `makeContext` 从钱包算出。
+    let remainingCap: Int
 
     var claimed: Set<String> { wallet.claimedRewards }
 }
@@ -47,13 +53,25 @@ protocol RewardRule {
     /// 一次性（成就）发过就不再发；周期性（上线/看家）每次都算
     var isOneTime: Bool { get }
 
+    /// 是否计入每日额度。只有看家收益算，上线奖励和成就不算。
+    var countsTowardDailyCap: Bool { get }
+
     /// 返回 nil = 本次不触发
     func evaluate(_ ctx: RewardContext) -> RewardOutcome?
+}
+
+extension RewardRule {
+    /// 默认不占额度 —— 只有 `OfflineCareReward` 覆写成 true。
+    var countsTowardDailyCap: Bool { false }
 }
 
 /// 一次结算的结果。
 struct RewardSettlement {
     let totalCoins: Int
+    /// 其中计入每日额度的部分（看家收益）。
+    /// 上线奖励与成就**不占额度** —— 它们是一次性/低频的，
+    /// 让它们吃额度会挤掉当天的看家收入，玩家会觉得「领了成就反而少赚」。
+    let cappedCoins: Int
     /// 新解锁的一次性奖励 ID，调用方要写进存档
     let newlyClaimed: [String]
     /// 要展示的消息（通常只展示第一条）
@@ -75,6 +93,7 @@ struct RewardEngine {
 
     func settle(_ ctx: RewardContext) -> RewardSettlement {
         var total = 0
+        var capped = 0
         var claimed: [String] = []
         var messages: [(key: String, args: [CVarArg])] = []
 
@@ -84,6 +103,7 @@ struct RewardEngine {
             guard let out = rule.evaluate(ctx) else { continue }
 
             total += out.coins
+            if rule.countsTowardDailyCap { capped += out.coins }
             if rule.isOneTime { claimed.append(rule.id) }
             if !out.messageKey.isEmpty {
                 messages.append((out.messageKey, out.messageArgs))
@@ -91,13 +111,14 @@ struct RewardEngine {
         }
 
         return RewardSettlement(totalCoins: total,
+                                cappedCoins: capped,
                                 newlyClaimed: claimed,
                                 messages: messages)
     }
 
-    /// 计算三维状态在离线期间的平均值。
+    /// 计算状态在离线期间的平均值。
     ///
-    /// 三条线都是线性衰减，所以梯形法就是精确解：
+    /// 衰减是线性的，所以梯形法就是精确解：
     /// - 离线 ≤ 周期：`1 - 离线/(2×周期)`
     /// - 离线 > 周期：衰减到 0 后一直是 0，平均 = `(周期×0.5)/离线`
     static func averageLevel(offlineHours: Double, cycleHours: Double) -> Double {
@@ -116,16 +137,16 @@ struct RewardEngine {
                             wallet: PetWallet,
                             now: Date = Date()) -> RewardContext {
         let hours = max(0, now.timeIntervalSince(wallet.lastCollectedAt) / 3600)
+        // 饱食周期随生命阶段变化（幼年 12h → 成年 8h）
+        let hungerCycle = pet.stage.hungerCycleHours
         return RewardContext(
             pet: pet,
             wallet: wallet,
             now: now,
             offlineHours: hours,
-            avgSatiety: averageLevel(offlineHours: hours,
-                                     cycleHours: PetState.Decay.hunger / 3600),
+            avgSatiety: averageLevel(offlineHours: hours, cycleHours: hungerCycle),
             avgMood: averageLevel(offlineHours: hours,
                                   cycleHours: PetState.Decay.mood / 3600),
-            avgHygiene: averageLevel(offlineHours: hours,
-                                     cycleHours: PetState.Decay.hygiene / 3600))
+            remainingCap: wallet.remainingCap(stage: pet.stage, at: now))
     }
 }

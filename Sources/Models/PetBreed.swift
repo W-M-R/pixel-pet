@@ -64,6 +64,42 @@ enum PetStage: String, Codable, CaseIterable, Sendable {
     var sheetSuffix: String? {
         self == .adult ? nil : rawValue
     }
+
+    // MARK: - 经济参数
+
+    /// 每日收益额度。
+    ///
+    /// 养大了赚得多。elder 略低于 adult（和 `bodyScale` 的 0.94 < 1.0 同构）：
+    /// 老年期回落但仍高于幼年，不惩罚长期玩家。
+    ///
+    /// 硬约束：**必须大于该阶段的日常粮钱**，否则新手期怎么玩都亏。
+    /// 日常粮钱 ≈ (24/`hungerCycleHours`) × 10 × `FoodItem.coinsPer10Percent`
+    /// = 幼 100 / 成长 120 / 成年 150 / 老年 133。
+    ///
+    /// 峰值净结余 = `dailyCap` − 日常粮钱，与达成率无关 ——
+    /// 所以「攒钱节奏」和「状态影响多大」是两个独立旋钮。
+    var dailyCap: Int {
+        switch self {
+        case .young:   return 170
+        case .growing: return 195
+        case .adult:   return 225
+        case .elder:   return 205
+        }
+    }
+
+    /// 饱食衰减周期（小时）。**小宠物吃得少。**
+    ///
+    /// 按阶段区分是为了解耦两件事：如果所有阶段共用 8 小时，
+    /// 那么幼年的支出标准和成年一样，但额度更低 —— 幼年必亏，
+    /// 且「阶段差异」与「收支平衡」被压在同一个旋钮上，调不开。
+    var hungerCycleHours: Double {
+        switch self {
+        case .young:   return 12
+        case .growing: return 10
+        case .adult:   return 8
+        case .elder:   return 9
+        }
+    }
 }
 
 /// 宠物品种。

@@ -74,9 +74,10 @@ struct FoodPickerView: View {
     }
 
     private func row(_ food: FoodItem) -> some View {
-        let affordable = store.canAfford(food)
-        let hours = food.effectiveHours(currentSatiety: satiety)
-        let wasteful = food.isWasteful(currentSatiety: satiety)
+        let price = food.cost(currentSatiety: satiety)
+        let affordable = store.wallet.coins >= price
+        let hours = food.effectiveHours(currentSatiety: satiety,
+                                        stage: store.pet.stage)
 
         return Button {
             guard affordable else {
@@ -96,9 +97,10 @@ struct FoodPickerView: View {
 
                     // 动态显示「实际能管多久」而非标称值 ——
                     // 恢复是加到当前值并封顶，半饱时吃罐头只补一半。
+                    // 价格也按量走，所以半饱时吃好东西不再「浪费」。
                     Text(verbatim: durationText(hours))
                         .font(.caption)
-                        .foregroundStyle(wasteful ? .orange : .secondary)
+                        .foregroundStyle(.secondary)
 
                     if food.moodBonus > 0 {
                         Text(verbatim: String(format: L("food.mood_bonus"),
@@ -111,16 +113,11 @@ struct FoodPickerView: View {
                             .font(.caption2)
                             .foregroundStyle(.yellow)
                     }
-                    if wasteful {
-                        Text(verbatim: L("food.wasteful"))
-                            .font(.caption2)
-                            .foregroundStyle(.orange)
-                    }
                 }
 
                 Spacer()
 
-                priceLabel(food, affordable: affordable)
+                priceLabel(price: price, isFree: food.isFree, affordable: affordable)
             }
             .padding(12)
             .background(.white.opacity(affordable ? 0.10 : 0.04),
@@ -130,20 +127,21 @@ struct FoodPickerView: View {
         .buttonStyle(.plain)
     }
 
+    /// 价格标签。按量计价，所以传算好的 price 而非 FoodItem。
     @ViewBuilder
-    private func priceLabel(_ food: FoodItem, affordable: Bool) -> some View {
-            if food.isFree {
-                Text(verbatim: L("food.free"))
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.green)
-            } else {
-                HStack(spacing: 3) {
-                    Text(verbatim: "🪙")
-                        .font(.system(size: 12))
-                    Text(verbatim: "\(food.price)")
-                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                }
-                .foregroundStyle(affordable ? Color.primary : Color.red)
+    private func priceLabel(price: Int, isFree: Bool, affordable: Bool) -> some View {
+        if isFree {
+            Text(verbatim: L("food.free"))
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.green)
+        } else {
+            HStack(spacing: 3) {
+                Text(verbatim: "🪙")
+                    .font(.system(size: 12))
+                Text(verbatim: "\(price)")
+                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
+            }
+            .foregroundStyle(affordable ? Color.primary : Color.red)
         }
     }
 

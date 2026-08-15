@@ -88,9 +88,18 @@ struct PetState: Codable, Equatable {
     /// 故意让三条线的周期不同步，这样每次打开看到的「最紧急需求」会变化，
     /// 比三条线一起见底更有意思。
     enum Decay {
+        /// 成年期的饱食周期。**其余阶段见 `PetStage.hungerCycleHours`** ——
+        /// 小宠物吃得少，幼年 12h、成长 10h、老年 9h。
+        ///
+        /// 这个常量留作「默认/参考值」，实际计算走 `hungerSpan(for:)`。
         static let hunger: TimeInterval   = 8 * 3600
         static let mood: TimeInterval     = 18 * 3600
         static let hygiene: TimeInterval  = 72 * 3600
+
+        /// 按阶段取饱食周期
+        static func hunger(for stage: PetStage) -> TimeInterval {
+            stage.hungerCycleHours * 3600
+        }
     }
 
     init(breedID: String = PetBreed.cat.id,
@@ -187,8 +196,12 @@ struct PetState: Codable, Equatable {
     // MARK: - 派生数值（读时计算，全部 0...1）
 
     /// 1 = 饱，0 = 饿透
+    ///
+    /// 周期随生命阶段变化（幼年 12h → 成年 8h）。
+    /// 副作用：跨阶段的那一刻饱食度会小幅下跳（周期变短了）。
+    /// 不做平滑 —— 一天只可能发生一次，且「长大了更容易饿」符合直觉。
     func satiety(at now: Date = Date()) -> Double {
-        remaining(since: lastFedAt, span: Decay.hunger, now: now)
+        remaining(since: lastFedAt, span: Decay.hunger(for: stage), now: now)
     }
 
     /// 1 = 开心，0 = 无聊

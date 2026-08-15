@@ -50,7 +50,8 @@ enum PetNotifications {
         let now = Date()
 
         // 饱食：从 lastFedAt 起 hunger 周期的 85% 处提醒
-        let hungryAt = pet.lastFedAt.addingTimeInterval(PetState.Decay.hunger * 0.85)
+        let hungryAt = pet.lastFedAt.addingTimeInterval(
+            PetState.Decay.hunger(for: pet.stage) * 0.85)
         schedule(id: hungryID,
                  titleKey: "notify.hungry.title",
                  bodyKey: "notify.hungry.body",
