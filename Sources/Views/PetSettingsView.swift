@@ -15,6 +15,10 @@ struct PetSettingsView: View {
 
     private var pet: PetState { store.pet }
 
+    private var claimedCount: Int {
+        AchievementRule.all.filter { store.isClaimed($0) }.count
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -25,6 +29,17 @@ struct PetSettingsView: View {
                 notificationSection
 
                 Section {
+                    NavigationLink {
+                        AchievementsView(store: store)
+                    } label: {
+                        HStack {
+                            Text(verbatim: L("achv.title"))
+                            Spacer()
+                            Text(verbatim: "\(claimedCount) / \(AchievementRule.all.count)")
+                                .font(.system(.footnote, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                     NavigationLink(L("settings.language")) { LanguagePickerView() }
                     NavigationLink(L("credits.title")) { CreditsView() }
                 }
@@ -142,6 +157,13 @@ struct PetSettingsView: View {
 
     private var statsSection: some View {
         Section(L("settings.stats")) {
+            LabeledContent(L("wallet.coins")) {
+                HStack(spacing: 4) {
+                    Text(verbatim: "🪙")
+                    Text(verbatim: "\(store.wallet.coins)")
+                        .font(.system(.body, design: .monospaced))
+                }
+            }
             statRow("stats.streak", value: pet.streakDays ?? 1, unit: "unit.day")
             statRow("stats.feed", value: pet.totalFeedCount ?? 0, unit: "unit.times")
             statRow("stats.play", value: pet.totalPlayCount ?? 0, unit: "unit.times")

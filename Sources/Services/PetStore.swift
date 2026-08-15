@@ -8,7 +8,9 @@ import Observation
 final class PetStore {
 
     private(set) var pet: PetState
+    private(set) var wallet: PetWallet
     private let fileURL: URL
+    private let walletURL: URL
 
     /// 驱动 UI 定时刷新的心跳。状态本身是按时间戳算的，
     /// 但 SwiftUI 需要一个变化信号才会重绘。
@@ -20,19 +22,36 @@ final class PetStore {
                                            in: .userDomainMask)[0]
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         self.fileURL = dir.appendingPathComponent("pet.json")
+        self.walletURL = dir.appendingPathComponent("wallet.json")
 
+        // 用局部变量算好再赋值。init 里在所有 stored property 就位前
+        // 访问 self.pet / self.wallet 会编译失败。
+        let loadedPet: PetState
         if let data = try? Data(contentsOf: fileURL),
            let decoded = try? JSONDecoder().decode(PetState.self, from: data) {
-            self.pet = decoded
+            loadedPet = decoded
         } else {
-            // 首次启动：新宠物必须立刻写盘。
-            // 之前漏了这一步，导致 bornAt 每次启动都被重置 ——
-            // 宠物永远显示「相伴第 0 天」，存档形同不存在。
-            self.pet = PetState(species: .cat, colorIndex: 0, name: "")
-            if let data = try? JSONEncoder().encode(self.pet) {
-                try? data.write(to: fileURL, options: .atomic)
+            // 首次启动必须立刻写盘 —— 否则 bornAt 每次启动都被重置，
+            // 宠物永远显示「相伴第 0 天」。
+            loadedPet = PetState(breedID: PetBreed.cat.id, colorIndex: 0, name: "")
+            if let d = try? JSONEncoder().encode(loadedPet) {
+                try? d.write(to: fileURL, options: .atomic)
             }
         }
+        self.pet = loadedPet
+
+        let loadedWallet: PetWallet
+        if let data = try? Data(contentsOf: walletURL),
+           let w = try? JSONDecoder().decode(PetWallet.self, from: data) {
+            loadedWallet = w
+        } else {
+            loadedWallet = PetWallet()
+            if let d = try? JSONEncoder().encode(loadedWallet) {
+                try? d.write(to: walletURL, options: .atomic)
+            }
+        }
+        self.wallet = loadedWallet
+
         startHeartbeat()
     }
 
@@ -83,6 +102,35 @@ final class PetStore {
         persist()
     }
 
+    // MARK: - 奖励结算
+
+    /// 结算奖励。返回结果供 UI 展示，nil = 无收益。
+    /// 要在 markSeen() 之后调用 —— 连续天数会影响成就判定。
+    @discardableResult
+    func settleRewards(now: Date = Date()) -> RewardSettlement? {
+        let ctx = RewardEngine.makeContext(pet: pet, wallet: wallet, now: now)
+        let result = RewardEngine.default.settle(ctx)
+        guard !result.isEmpty else { return nil }
+
+        wallet.coins += result.totalCoins
+        wallet.totalEarned += result.totalCoins
+        for id in result.newlyClaimed { wallet.claimedRewards.insert(id) }
+        wallet.lastCollectedAt = now
+        persist()
+        return result
+    }
+
+    /// 某条成就的进度。已领取或无进度型返回 nil。
+    func achievementProgress(_ rule: AchievementRule) -> (current: Int, target: Int)? {
+        guard !wallet.claimedRewards.contains(rule.id), let p = rule.progress else { return nil }
+        let (c, t) = p(pet, wallet)
+        return (c, t)
+    }
+
+    func isClaimed(_ rule: AchievementRule) -> Bool {
+        wallet.claimedRewards.contains(rule.id)
+    }
+
     /// 当前状态快照，供台词生成用。
     func lineContext(trigger: PetLineContext.Trigger) -> PetLineContext {
         let now = Date()
@@ -101,11 +149,41 @@ final class PetStore {
 
     // MARK: - 互动
 
-    func feed() {
+    /// 能否买得起
+    func canAfford(_ food: FoodItem) -> Bool {
+        food.isFree || wallet.coins >= food.price
+    }
+
+    /// 喂食。返回是否成功（钱不够会失败）。
+    @discardableResult
+    func feed(_ food: FoodItem = .kibble) -> Bool {
+        guard canAfford(food) else { return false }
         extendAwakeIfNeeded()
-        pet.lastFedAt = Date()
+        let now = Date()
+
+        if !food.isFree { wallet.coins -= food.price }
+
+        // 饱食：加到当前值并封顶。
+        // 用「反推 lastFedAt」而不是存数值 —— 状态必须保持时间戳驱动。
+        let after = min(1.0, pet.satiety(at: now) + food.satietyRestore)
+        pet.lastFedAt = now.addingTimeInterval(-(1 - after) * PetState.Decay.hunger)
+
+        if food.moodBonus > 0 {
+            let m = min(1.0, pet.mood(at: now) + food.moodBonus)
+            pet.lastPlayedAt = now.addingTimeInterval(-(1 - m) * PetState.Decay.mood)
+        }
+
+        if food.grantsBoost {
+            wallet.boostUntil = now.addingTimeInterval(FoodItem.boostDuration)
+        }
+
         pet.totalFeedCount = (pet.totalFeedCount ?? 0) + 1
+        var counts = pet.foodCounts ?? [:]
+        counts[food.id, default: 0] += 1
+        pet.foodCounts = counts
+
         persist()
+        return true
     }
 
     func play() {
@@ -165,6 +243,9 @@ final class PetStore {
     func choose(breedID: String, colorIndex: Int) {
         pet.breedID = breedID
         pet.colorIndex = colorIndex
+        // 记录用于收藏成就
+        var breeds = pet.triedBreeds ?? []; breeds.insert(breedID); pet.triedBreeds = breeds
+        var colors = pet.triedColors ?? []; colors.insert(colorIndex); pet.triedColors = colors
         persist()
     }
 
@@ -187,12 +268,16 @@ final class PetStore {
     }
 
     func resetAll() {
-        pet = PetState(species: pet.species, colorIndex: pet.colorIndex, name: pet.name)
+        wallet = PetWallet()
+        pet = PetState(breedID: pet.breedID, colorIndex: pet.colorIndex, name: pet.name)
         persist()
         refresh()
     }
 
     private func persist() {
+        if let w = try? JSONEncoder().encode(wallet) {
+            try? w.write(to: walletURL, options: .atomic)
+        }
         guard let data = try? JSONEncoder().encode(pet) else { return }
         try? data.write(to: fileURL, options: .atomic)
         tick = Date()

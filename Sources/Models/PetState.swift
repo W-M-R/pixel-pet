@@ -61,6 +61,13 @@ struct PetState: Codable, Equatable {
     /// 上次计入连续天数的日期（按天去重）
     var lastStreakDay: Date?
 
+    /// 养过的品种（收藏成就）
+    var triedBreeds: Set<String>?
+    /// 试过的毛色（收藏成就）
+    var triedColors: Set<Int>?
+    /// 各档食物的喂食次数，key = FoodItem.id（美食成就）
+    var foodCounts: [String: Int]?
+
     // MARK: - 派生
 
     var breed: PetBreed { PetBreed.byID(breedID) }
@@ -73,15 +80,15 @@ struct PetState: Codable, Equatable {
 
     /// 各维度从「满」降到「空」所需的秒数。
     ///
-    /// 节奏设计：养成类的关键是「一天打开两三次刚好」。
-    /// - 饱食 12h：早晚各喂一次
+    /// 节奏设计：约每 5-7 小时喂一次 = 4.3 次/天。
+    /// - 饱食 8h：一天 3-4 次
     /// - 心情 18h：一天陪一次就够
     /// - 清洁 3 天：低频维护，不制造焦虑
     ///
     /// 故意让三条线的周期不同步，这样每次打开看到的「最紧急需求」会变化，
     /// 比三条线一起见底更有意思。
     enum Decay {
-        static let hunger: TimeInterval   = 12 * 3600
+        static let hunger: TimeInterval   = 8 * 3600
         static let mood: TimeInterval     = 18 * 3600
         static let hygiene: TimeInterval  = 72 * 3600
     }
@@ -104,6 +111,9 @@ struct PetState: Codable, Equatable {
         self.totalCleanCount = 0
         self.streakDays = 1
         self.lastStreakDay = now
+        self.triedBreeds = [breedID]
+        self.triedColors = [colorIndex]
+        self.foodCounts = [:]
     }
 
     /// 兼容旧调用点
@@ -118,6 +128,7 @@ struct PetState: Codable, Equatable {
         case awakeUntil, lastSeenAt, lastFedAt, lastPlayedAt, lastCleanedAt
         case totalFeedCount, totalPlayCount, totalCleanCount
         case streakDays, lastStreakDay
+        case triedBreeds, triedColors, foodCounts
     }
 
     /// 自定义解码：旧存档存的是 `species`，新的是 `breedID`。
@@ -145,6 +156,9 @@ struct PetState: Codable, Equatable {
         totalCleanCount = try c.decodeIfPresent(Int.self, forKey: .totalCleanCount)
         streakDays = try c.decodeIfPresent(Int.self, forKey: .streakDays)
         lastStreakDay = try c.decodeIfPresent(Date.self, forKey: .lastStreakDay)
+        triedBreeds = try c.decodeIfPresent(Set<String>.self, forKey: .triedBreeds)
+        triedColors = try c.decodeIfPresent(Set<Int>.self, forKey: .triedColors)
+        foodCounts = try c.decodeIfPresent([String: Int].self, forKey: .foodCounts)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -165,6 +179,9 @@ struct PetState: Codable, Equatable {
         try c.encodeIfPresent(totalCleanCount, forKey: .totalCleanCount)
         try c.encodeIfPresent(streakDays, forKey: .streakDays)
         try c.encodeIfPresent(lastStreakDay, forKey: .lastStreakDay)
+        try c.encodeIfPresent(triedBreeds, forKey: .triedBreeds)
+        try c.encodeIfPresent(triedColors, forKey: .triedColors)
+        try c.encodeIfPresent(foodCounts, forKey: .foodCounts)
     }
 
     // MARK: - 派生数值（读时计算，全部 0...1）

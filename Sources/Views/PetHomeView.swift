@@ -7,6 +7,7 @@ struct PetHomeView: View {
     @State private var talk = PetTalkCoordinator()
     @State private var scene = PetScene()
     @State private var showSettings = false
+    @State private var showFood = false
     @State private var showDebug = false
     @Environment(\.scenePhase) private var scenePhase
 
@@ -30,12 +31,6 @@ struct PetHomeView: View {
             .padding(.bottom, 8)
         }
         .onAppear {
-            // 临时测量钩子：PIXELPET_FORCE_AI=1 时强制开 AI 并切英文。
-            // 用于真机内存实测（devicectl 传 UserDefaults 参数不生效）。
-            if ProcessInfo.processInfo.environment["PIXELPET_FORCE_AI"] == "1" {
-                LocalizationManager.shared.setLanguage("en")
-                PetChatEngine.isEnabled = true
-            }
             scene.scaleMode = .resizeFill
             scene.layout = roomStore.layout
             syncScenePet()
@@ -51,9 +46,24 @@ struct PetHomeView: View {
             // 开场问候。读 daysSinceLastSeen 必须在 markSeen 之前。
             let absent = store.daysSinceLastSeen
             store.markSeen()
+            // 结算要在 markSeen 之后 —— 连续天数会影响成就判定
+            let settlement = store.settleRewards()
+
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                if talk.speak(store.lineContext(trigger: .appeared),
-                              absentDays: absent, force: true) {
+                // 有收益就报账，否则说日常问候
+                if let s = settlement, let first = s.messages.first {
+                    scene.showSpeech(String(format: L(first.key),
+                                            arguments: first.args))
+                    // 成就消息接在后面
+                    if s.messages.count > 1 {
+                        let second = s.messages[1]
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 6.5) {
+                            scene.showSpeech(String(format: L(second.key),
+                                                    arguments: second.args))
+                        }
+                    }
+                } else if talk.speak(store.lineContext(trigger: .appeared),
+                                     absentDays: absent, force: true) {
                     scene.showSpeech(talk.currentLine ?? "")
                 }
             }
@@ -83,6 +93,13 @@ struct PetHomeView: View {
         .onChange(of: store.pet.breedID) { _, _ in syncScenePet() }
         .onChange(of: store.pet.colorIndex) { _, _ in syncScenePet() }
         .onChange(of: store.pet.stage) { _, _ in syncScenePet() }
+        .sheet(isPresented: $showFood) {
+            FoodPickerView(store: store) { food in
+                guard store.feed(food) else { return }
+                scene.triggerEat()
+                say(.fed, delay: 1.6)     // 等咀嚼动画演完再说话
+            }
+        }
         .sheet(isPresented: $showSettings) {
             PetSettingsView(store: store, talk: talk)
         }
@@ -131,7 +148,13 @@ struct PetHomeView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text(store.pet.dominantNeed(at: now).emoji)
+                HStack(spacing: 3) {
+                    Text(verbatim: "🪙").font(.system(size: 13))
+                    Text(verbatim: "\(store.wallet.coins)")
+                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                }
+                .foregroundStyle(.white.opacity(0.9))
+                Text(verbatim: store.pet.dominantNeed(at: now).emoji)
                     .font(.system(size: 26))
                 Button {
                     showSettings = true
@@ -166,9 +189,7 @@ struct PetHomeView: View {
     private var actionBar: some View {
         HStack(spacing: 10) {
             ActionButton(titleKey: "action.feed", emoji: "🍖") {
-                store.feed()
-                scene.triggerEat()
-                say(.fed, delay: 1.6)     // 等咀嚼动画演完再说话
+                showFood = true
             }
             ActionButton(titleKey: "action.play", emoji: "🎾") {
                 store.play()
@@ -217,7 +238,11 @@ private struct ActionButton: View {
     var body: some View {
         Button(action: action) {
             VStack(spacing: 3) {
-                Text(emoji).font(.system(size: 22))
+                // ⚠️ 必须用 verbatim。Text("🍖") 走 LocalizedStringKey，
+                // 会把 emoji 当本地化 key 去 catalog 查，查不到返回空字符串。
+                // SpriteKit 的 SKLabelNode 不经过本地化，所以气泡里的 emoji 一直正常，
+                // 只有 SwiftUI 按钮的消失了。
+                Text(verbatim: emoji).font(.system(size: 22))
                 Text(verbatim: L(titleKey))
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
             }
@@ -320,7 +345,7 @@ private struct DebugPanel: View {
                     Toggle("AI 台词", isOn: Binding(
                         get: { talk.aiEnabled },
                         set: { talk.aiEnabled = $0 }))
-                    Text(aiStatusText)
+                    Text(verbatim: aiStatusText)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } header: {
