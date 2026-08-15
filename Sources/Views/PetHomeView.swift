@@ -38,6 +38,7 @@ struct PetHomeView: View {
             scene.scaleMode = .resizeFill
             scene.layout = roomStore.layout
             syncScenePet()
+
             scene.onPetTouched = {
                 // 睡着时戳它 = 叫醒，并维持一段清醒。
                 // 否则站起来后下一次心跳又会把它按回去睡。
@@ -46,35 +47,22 @@ struct PetHomeView: View {
                 store.stroke()
                 say(wasDrowsy ? .wokenUp : .stroked)
             }
-
-            // 开场问候。读 daysSinceLastSeen 必须在 markSeen 之前。
-            let absent = store.daysSinceLastSeen
-            store.markSeen()
-            // 结算要在 markSeen 之后 —— 连续天数会影响成就判定
-            let settlement = store.settleRewards()
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                // 有收益就报账，否则说日常问候
-                if let s = settlement, let first = s.messages.first {
-                    scene.showSpeech(String(format: L(first.key),
-                                            arguments: first.args))
-                    // 成就消息接在后面
-                    if s.messages.count > 1 {
-                        let second = s.messages[1]
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 6.5) {
-                            scene.showSpeech(String(format: L(second.key),
-                                                    arguments: second.args))
-                        }
-                    }
-                } else if talk.speak(store.lineContext(trigger: .appeared),
-                                     absentDays: absent, force: true) {
-                    scene.showSpeech(talk.currentLine ?? "")
-                }
-            }
             scene.onFurnitureMoved = { id, ratio in
                 roomStore.move(id: id, toXRatio: ratio)
                 scene.layout = roomStore.layout
             }
+
+            // 开场时序在 OpeningSequence 里（顺序有硬约束，注释在那边）
+            let plan = OpeningSequence.plan(store: store)
+            OpeningSequence.announce(
+                plan,
+                speak: { scene.showSpeech($0) },
+                fallback: {
+                    if talk.speak(store.lineContext(trigger: .appeared),
+                                  absentDays: plan.absentDays, force: true) {
+                        scene.showSpeech(talk.currentLine ?? "")
+                    }
+                })
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.refresh() }

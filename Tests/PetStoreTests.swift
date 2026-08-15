@@ -251,3 +251,132 @@ final class PetStoreTests: XCTestCase {
         XCTAssertFalse(store.stroke(), "冷却中应失败")
     }
 }
+
+// MARK: - 开场编排
+
+/// `OpeningSequence` 的测试。
+///
+/// 原来这段时序在 `PetHomeView.onAppear` 里（42 行，含两层嵌套
+/// asyncAfter），和视图声明混在一起，完全无法测。
+@MainActor
+final class OpeningSequenceTests: XCTestCase {
+
+    private var dir: URL!
+
+    override func setUp() {
+        super.setUp()
+        dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+    }
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: dir)
+        super.tearDown()
+    }
+
+    private func makeStore() -> PetStore {
+        PetStore(directory: dir,
+                 schedulesNotifications: false,
+                 runsHeartbeat: false)
+    }
+
+    /// 无收益时 messages 为空 —— 调用方据此走日常问候
+    func testNoSettlementYieldsNoMessages() {
+        let store = makeStore()
+        // 刚建的 store，lastCollectedAt 是现在，离线时长为 0
+        let plan = OpeningSequence.plan(store: store)
+        XCTAssertFalse(plan.hasSettlementNews,
+                       "无离线收益时应交给台词系统说问候")
+    }
+
+    /// 有收益时产出可播报的文案
+    func testSettlementProducesMessages() {
+        let store = makeStore()
+        var w = store.wallet
+        w.lastCollectedAt = Date().addingTimeInterval(-8 * 3600)
+        store.debugSet(wallet: w)
+
+        let plan = OpeningSequence.plan(store: store)
+        XCTAssertTrue(plan.hasSettlementNews)
+        XCTAssertFalse(plan.messages[0].isEmpty)
+        // 文案要经过本地化格式化，不该残留 %@ / %d
+        XCTAssertFalse(plan.messages[0].contains("%@"))
+        XCTAssertFalse(plan.messages[0].contains("%d"))
+    }
+
+    /// **顺序硬约束**：读 daysSinceLastSeen 必须在 markSeen 之前。
+    ///
+    /// 如果顺序颠倒，absentDays 永远是 0，「久别重逢」台词永远不触发。
+    func testAbsentDaysReadBeforeMarkSeen() {
+        let store = makeStore()
+        var p = store.pet
+        p.lastSeenAt = Calendar.current.date(byAdding: .day, value: -5,
+                                             to: Date())
+        store.debugSet(pet: p)
+
+        let plan = OpeningSequence.plan(store: store)
+        XCTAssertEqual(plan.absentDays, 5,
+                       "markSeen 之前读到的天数应该是 5")
+        // markSeen 已经跑过，连续天数被重置（隔了 5 天）
+        XCTAssertEqual(store.pet.streakDays, 1)
+    }
+
+    /// 结算必须在 markSeen 之后 —— 连续天数影响成就判定。
+    ///
+    /// ⚠️ 连续天数看的是 `lastStreakDay` 而不是 `lastSeenAt`
+    /// （两个字段，前者只在跨日签到时更新）。我第一版测试设错了字段，
+    /// 断言 streak 从 2 涨到 3 但实际没动 —— 记在这里免得再踩。
+    func testSettlementSeesUpdatedStreak() {
+        let store = makeStore()
+        var p = store.pet
+        // 昨天签到过，今天打开应该 streak +1
+        p.lastStreakDay = Calendar.current.date(byAdding: .day, value: -1,
+                                                to: Date())
+        p.streakDays = 2
+        store.debugSet(pet: p)
+
+        _ = OpeningSequence.plan(store: store)
+        XCTAssertEqual(store.pet.streakDays, 3,
+                       "结算前 streak 应已更新到 3")
+    }
+
+    /// 断签：隔 2 天以上重置为 1
+    func testStreakResetsAfterGap() {
+        let store = makeStore()
+        var p = store.pet
+        p.lastStreakDay = Calendar.current.date(byAdding: .day, value: -3,
+                                                to: Date())
+        p.streakDays = 10
+        store.debugSet(pet: p)
+
+        _ = OpeningSequence.plan(store: store)
+        XCTAssertEqual(store.pet.streakDays, 1, "隔 3 天应断签")
+    }
+
+    /// 同一天多次打开，连续天数不该重复累加
+    func testStreakDoesNotDoubleCountSameDay() {
+        let store = makeStore()
+        var p = store.pet
+        p.lastStreakDay = Date()
+        p.streakDays = 5
+        store.debugSet(pet: p)
+
+        _ = OpeningSequence.plan(store: store)
+        XCTAssertEqual(store.pet.streakDays, 5, "同一天不该再加")
+    }
+
+    /// 延迟常量要合理：第二条消息的间隔必须大于气泡停留时长，
+    /// 否则第一条还没消失就被顶掉
+    func testSecondMessageWaitsForFirstToClear() {
+        XCTAssertGreaterThan(OpeningSequence.secondMessageDelay,
+                             BubbleLayer.defaultSpeechDuration,
+                             "第二条消息会顶掉还在显示的第一条")
+    }
+
+    /// 开场延迟不能太长 —— 用户打开 app 等太久没反应会觉得卡
+    func testGreetDelayIsShort() {
+        XCTAssertLessThan(OpeningSequence.greetDelay, 2.0)
+        XCTAssertGreaterThan(OpeningSequence.greetDelay, 0.3,
+                             "太快会在场景渲染完成前弹气泡")
+    }
+}

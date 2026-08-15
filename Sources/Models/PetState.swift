@@ -246,11 +246,6 @@ struct PetState: Codable, Equatable {
         static let awakeGrace: TimeInterval = 20 * 60
     }
 
-    /// 综合健康度，给 UI 一个总览
-    func wellbeing(at now: Date = Date()) -> Double {
-        (satiety(at: now) + mood(at: now) + hygiene(at: now)) / 3
-    }
-
     var ageInDays: Int {
         Calendar.current.dateComponents([.day], from: bornAt, to: Date()).day ?? 0
     }
@@ -265,41 +260,3 @@ struct PetState: Codable, Equatable {
 }
 
 /// 宠物当下最需要什么。用来驱动情绪气泡和场景行为。
-enum PetNeed: String, CaseIterable {
-    case hungry
-    case bored
-    case dirty
-    case sleepy
-    case content
-
-    var emoji: String {
-        switch self {
-        case .hungry:  return "🍖"
-        case .bored:   return "🎾"
-        case .dirty:   return "🛁"
-        case .sleepy:  return "💤"
-        case .content: return "💗"
-        }
-    }
-
-    var messageKey: String { "need.\(rawValue)" }
-}
-
-extension PetState {
-    /// 取最紧急的需求。阈值 0.35 是手调的，之后可以按体感改。
-    ///
-    /// 顺序：生理需求优先于困倦 —— 饿着的时候不该只显示「困了」。
-    func dominantNeed(at now: Date = Date()) -> PetNeed {
-        let candidates: [(PetNeed, Double)] = [
-            (.hungry, satiety(at: now)),
-            (.bored,  mood(at: now)),
-            (.dirty,  hygiene(at: now))
-        ]
-        if let worst = candidates.min(by: { $0.1 < $1.1 }),
-           worst.1 < StateThreshold.hudAlert {
-            return worst.0
-        }
-        if isDrowsy(at: now) { return .sleepy }
-        return .content
-    }
-}
