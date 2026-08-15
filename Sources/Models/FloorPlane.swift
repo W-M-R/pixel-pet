@@ -44,6 +44,24 @@ struct FloorPlane {
     /// 缩得越狠越明显。
     var minScaleRatio: CGFloat = 0.78
 
+    /// 缩放量化步长（相对 pixelScale 的倍数）。
+    ///
+    /// **这是修「走动时忽大忽小」的关键。**
+    ///
+    /// nearest 采样下，源图 1 像素渲染成 `scale` 个 pt。scale 是非整数时
+    /// （比如 3.736），32 个源像素铺到 119.6pt —— 有些像素占 4pt、
+    /// 有些占 3pt，而且**哪些占 4pt 会随 scale 连续漂移**。
+    /// 走动时 y 每帧都在变 → scale 每帧都在变 → 像素块边界不停重新分配，
+    /// 看起来就是整只宠物在忽大忽小、边缘发抖。
+    ///
+    /// 解法是把 scale 量化成离散档位：走动时大部分时间 scale 完全不变，
+    /// 只在跨档时切换一次。代价是切换瞬间有一次轻微跳变，
+    /// 远好过持续抖动。
+    ///
+    /// 取 1/3 是因为主流 iPhone 是 3x 屏（1pt = 3 物理像素），
+    /// scale 为 1/3 的倍数时每个源像素恰好占整数个物理像素。
+    var scaleQuantum: CGFloat = 1.0 / 3.0
+
     init(backY: CGFloat, frontY: CGFloat, width: CGFloat) {
         self.backY = backY
         self.frontY = frontY
@@ -72,9 +90,28 @@ struct FloorPlane {
         return lo...max(lo + 1, hi)
     }
 
-    /// 某个 depth 处的缩放倍数（相对基准 pixelScale）
+    /// 某个 depth 处的缩放倍数（相对基准 pixelScale）。**连续值。**
+    ///
+    /// 影子等非像素元素可以直接用这个；宠物必须走
+    /// `quantizedScale(pixelScale:depth:)`，否则像素网格会抖。
     func scaleFactor(atDepth depth: CGFloat) -> CGFloat {
         1 - (1 - minScaleRatio) * depth
+    }
+
+    /// 宠物的最终缩放，已量化到 `scaleQuantum` 的整数倍。
+    ///
+    /// - Parameters:
+    ///   - pixelScale: 基准像素密度
+    ///   - bodyScale: 生命阶段体型系数
+    ///   - depth: 当前深度
+    func quantizedScale(pixelScale: CGFloat,
+                        bodyScale: CGFloat,
+                        depth: CGFloat) -> CGFloat {
+        let raw = pixelScale * bodyScale * scaleFactor(atDepth: depth)
+        guard scaleQuantum > 0 else { return raw }
+        let steps = (raw / scaleQuantum).rounded()
+        // 至少保留一档，避免极端参数下缩放归零
+        return max(scaleQuantum, steps * scaleQuantum)
     }
 
     /// 把任意点吸附到地板内的合法位置

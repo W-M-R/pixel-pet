@@ -176,6 +176,79 @@ final class FloorPlaneTests: XCTestCase {
         XCTAssertEqual(f.clamp(CGPoint(x: 200, y: -50)).y, 50, accuracy: 0.001)
     }
 
+    // MARK: - 缩放量化（修「走动时忽大忽小」）
+
+    /// 量化后的缩放必须是 scaleQuantum 的整数倍。
+    ///
+    /// 这条守的是像素完美：3x 屏下 1pt = 3 物理像素，scale 为 1/3 的倍数时
+    /// 每个源像素恰好占整数个物理像素，nearest 采样才不会抖。
+    func testQuantizedScaleLandsOnGrid() {
+        let f = makeFloor()
+        let q = f.scaleQuantum
+        for d in stride(from: 0.0, through: 1.0, by: 0.02) {
+            let s = f.quantizedScale(pixelScale: 4, bodyScale: 1.0, depth: CGFloat(d))
+            let steps = s / q
+            XCTAssertEqual(steps, steps.rounded(), accuracy: 0.0001,
+                           "depth \(d) 的缩放 \(s) 不在 1/\(1/q) 网格上")
+        }
+    }
+
+    /// **核心断言**：走动时缩放不能每帧都变。
+    ///
+    /// 连续缩放是「忽大忽小」的根因 —— nearest 采样下像素块边界会随
+    /// scale 连续漂移。量化后全程只允许少数几次跳变。
+    func testQuantizedScaleChangesRarely() {
+        let f = makeFloor()
+        var changes = 0
+        var prev = f.quantizedScale(pixelScale: 4, bodyScale: 1.0, depth: 0)
+        // 模拟走过整个纵深，100 个采样点
+        for i in 1...100 {
+            let s = f.quantizedScale(pixelScale: 4, bodyScale: 1.0,
+                                     depth: CGFloat(i) / 100)
+            if abs(s - prev) > 0.0001 { changes += 1; prev = s }
+        }
+        XCTAssertLessThanOrEqual(changes, 4,
+                                 "走过全场只该切换几档，实际切了 \(changes) 次")
+        XCTAssertGreaterThan(changes, 0, "完全不变就失去纵深感了")
+    }
+
+    /// 量化不能破坏「远处更小」这个前提
+    func testQuantizedScaleStillShrinksWithDepth() {
+        let f = makeFloor()
+        let near = f.quantizedScale(pixelScale: 4, bodyScale: 1.0, depth: 0)
+        let far = f.quantizedScale(pixelScale: 4, bodyScale: 1.0, depth: 1)
+        XCTAssertLessThan(far, near, "远处仍须更小")
+    }
+
+    /// 单调性：depth 增大，缩放不能变大
+    func testQuantizedScaleIsMonotonic() {
+        let f = makeFloor()
+        var prev = CGFloat.greatestFiniteMagnitude
+        for i in 0...100 {
+            let s = f.quantizedScale(pixelScale: 4, bodyScale: 1.0,
+                                     depth: CGFloat(i) / 100)
+            XCTAssertLessThanOrEqual(s, prev + 0.0001, "缩放不能随深度变大")
+            prev = s
+        }
+    }
+
+    /// 四个生命阶段都要落在网格上
+    func testQuantizedScaleForAllStages() {
+        let f = makeFloor()
+        let q = f.scaleQuantum
+        for stage in PetStage.allCases {
+            for d in [0.0, 0.5, 1.0] {
+                let s = f.quantizedScale(pixelScale: 4,
+                                         bodyScale: stage.bodyScale,
+                                         depth: CGFloat(d))
+                let steps = s / q
+                XCTAssertEqual(steps, steps.rounded(), accuracy: 0.0001,
+                               "\(stage) depth \(d) 缩放 \(s) 不在网格上")
+                XCTAssertGreaterThan(s, 0)
+            }
+        }
+    }
+
     func testRandomPointsAlwaysOnFloor() {
         let f = makeFloor()
         for _ in 0..<500 {
