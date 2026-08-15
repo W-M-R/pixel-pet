@@ -47,9 +47,22 @@ struct PetSettingsView: View {
                 }
             }
             .navigationTitle(L("settings.title"))
+            // 像素化：List 的系统灰底换成木色，行背景换成按钮色。
+            // 保留 List/Toggle/TextField 的原生行为（无障碍、键盘、滚动），
+            // 只换配色和字体 —— 自绘这些控件的收益远小于风险。
+            .scrollContentBackground(.hidden)
+            .background(Pixel.panel.color)
+            .listRowBackgroundPixel()
+            .font(Pixel.mono(Pixel.bodySize))
+            .foregroundStyle(Pixel.text.color)
+            .tint(Pixel.satiety.color)
+            .toolbarBackground(Pixel.panelDark.color, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L("common.done")) { commitName(); dismiss() }
+                        .font(Pixel.mono(Pixel.bodySize, .semibold))
+                        .foregroundStyle(Pixel.coin.color)
                 }
             }
             .onAppear { draftName = pet.name }
@@ -97,16 +110,20 @@ struct PetSettingsView: View {
                         store.choose(breedID: pet.breedID, colorIndex: i)
                     } label: {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(.white.opacity(0.12))
+                            Rectangle().fill(Pixel.slotEmpty.color)
                             if pet.colorIndex == i {
-                                RoundedRectangle(cornerRadius: 8)
-                                    .strokeBorder(Color.accentColor, lineWidth: 2)
+                                // 选中框用像素描边，不用圆角
+                                Rectangle()
+                                    .strokeBorder(Pixel.coin.color,
+                                                  lineWidth: Pixel.u(1))
                             }
                             Text(verbatim: "\(i + 1)")
-                                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                .font(Pixel.mono(Pixel.bodySize, .medium))
+                                .foregroundStyle(pet.colorIndex == i
+                                                 ? Pixel.coin.color
+                                                 : Pixel.textDim.color)
                         }
-                        .frame(height: 38)
+                        .frame(height: Pixel.u(9))
                     }
                     .buttonStyle(.plain)
                 }
@@ -129,9 +146,9 @@ struct PetSettingsView: View {
             if let left = pet.stage.daysToNext(from: pet.ageInDays) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(verbatim: String(format: L("settings.stage.next"), left))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    ProgressView(value: stageProgress)
+                        .font(Pixel.mono(Pixel.labelSize))
+                        .foregroundStyle(Pixel.textDim.color)
+                    PixelBar(value: stageProgress, tint: Pixel.satiety, slots: 20)
                 }
             } else {
                 Text(verbatim: L("settings.stage.final"))

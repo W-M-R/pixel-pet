@@ -15,61 +15,80 @@ struct FoodPickerView: View {
     private var satiety: Double { store.pet.satiety(at: store.tick) }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 14) {
+        ZStack {
+            // 房间墙色打底 —— 原来是系统 sheet 背景，
+            // 从像素房间点进来会有强烈的场景断裂
+            Pixel.panel.color.ignoresSafeArea()
+
+            VStack(spacing: Pixel.u(3)) {
+                header
                 satietyBar
 
-                ForEach(FoodItem.all) { food in
-                    row(food)
+                VStack(spacing: Pixel.u(2)) {
+                    ForEach(FoodItem.all) { food in
+                        row(food)
+                    }
                 }
 
                 if let toast {
                     Text(verbatim: toast)
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
+                        .font(Pixel.mono(Pixel.labelSize))
+                        .foregroundStyle(Pixel.warn.color)
                         .transition(.opacity)
                 }
-                Spacer()
+                Spacer(minLength: 0)
             }
-            .padding(16)
-            .navigationTitle(L("food.title"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { coinBadge }
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(L("common.done")) { dismiss() }
-                }
-            }
+            .padding(Pixel.u(4))
         }
     }
 
-    private var coinBadge: some View {
-        HStack(spacing: 4) {
-            Text(verbatim: "🪙")
-            Text(verbatim: "\(store.wallet.coins)")
-                .font(.system(.body, design: .monospaced))
+    /// 自绘标题栏。不用 NavigationStack 的原生导航条 ——
+    /// 那是这个界面「像原生设置页」的主要来源。
+    private var header: some View {
+        HStack {
+            Button {
+                dismiss()
+            } label: {
+                Text(verbatim: L("common.done"))
+                    .font(Pixel.mono(Pixel.bodySize, .medium))
+                    .foregroundStyle(Pixel.text.color)
+                    .padding(.horizontal, Pixel.u(3))
+                    .padding(.vertical, Pixel.u(1.5))
+                    .background(PixelPanel(fill: Pixel.button,
+                                           lite: Pixel.buttonLite,
+                                           dark: Pixel.buttonDark))
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            Text(verbatim: L("food.title"))
+                .font(Pixel.mono(Pixel.titleSize, .bold))
+                .foregroundStyle(Pixel.text.color)
+
+            Spacer()
+
+            HStack(spacing: Pixel.u(1)) {
+                PixelIconView(icon: .coin, size: Pixel.u(4))
+                Text(verbatim: "\(store.wallet.coins)")
+                    .font(Pixel.mono(Pixel.numberSize, .semibold))
+                    .foregroundStyle(Pixel.coin.color)
+            }
         }
     }
 
     /// 当前饱食度，让玩家判断该吃哪档
     private var satietyBar: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Pixel.u(1)) {
             HStack {
                 Text(verbatim: L("stat.satiety"))
-                    .font(.caption)
+                    .font(Pixel.mono(Pixel.labelSize))
                 Spacer()
                 Text(verbatim: "\(Int(satiety * 100))%")
-                    .font(.system(.caption, design: .monospaced))
+                    .font(Pixel.mono(Pixel.labelSize))
             }
-            .foregroundStyle(.secondary)
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.quaternary)
-                    Capsule().fill(satiety < 0.3 ? Color.red : Color.orange)
-                        .frame(width: max(3, geo.size.width * satiety))
-                }
-            }
-            .frame(height: 6)
+            .foregroundStyle(Pixel.textDim.color)
+            PixelBar(value: satiety, tint: Pixel.satiety, slots: 20)
         }
     }
 
@@ -87,42 +106,45 @@ struct FoodPickerView: View {
             onPick(food)
             dismiss()
         } label: {
-            HStack(spacing: 12) {
-                Text(verbatim: food.emoji)
-                    .font(.system(size: 30))
+            HStack(spacing: Pixel.u(3)) {
+                PixelIconView(icon: .forFood(food.id), size: Pixel.u(8))
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: Pixel.u(0.5)) {
                     Text(verbatim: L(food.nameKey))
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(Pixel.mono(Pixel.bodySize, .semibold))
+                        .foregroundStyle(Pixel.text.color)
 
                     // 动态显示「实际能管多久」而非标称值 ——
                     // 恢复是加到当前值并封顶，半饱时吃罐头只补一半。
                     // 价格也按量走，所以半饱时吃好东西不再「浪费」。
                     Text(verbatim: durationText(hours))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(Pixel.mono(Pixel.labelSize))
+                        .foregroundStyle(Pixel.textDim.color)
 
                     if food.moodBonus > 0 {
                         Text(verbatim: String(format: L("food.mood_bonus"),
                                               Int(food.moodBonus * 100)))
-                            .font(.caption2)
-                            .foregroundStyle(.pink)
+                            .font(Pixel.mono(Pixel.labelSize))
+                            .foregroundStyle(Pixel.mood.color)
                     }
                     if food.grantsBoost {
                         Text(verbatim: L("food.boost"))
-                            .font(.caption2)
-                            .foregroundStyle(.yellow)
+                            .font(Pixel.mono(Pixel.labelSize))
+                            .foregroundStyle(Pixel.coin.color)
                     }
                 }
 
-                Spacer()
+                Spacer(minLength: 0)
 
                 priceLabel(price: price, isFree: food.isFree, affordable: affordable)
             }
-            .padding(12)
-            .background(.white.opacity(affordable ? 0.10 : 0.04),
-                        in: RoundedRectangle(cornerRadius: 12))
-            .opacity(affordable ? 1 : 0.55)
+            .padding(Pixel.u(2.5))
+            .background(
+                PixelPanel(fill: affordable ? Pixel.button : Pixel.buttonDark,
+                           lite: affordable ? Pixel.buttonLite : Pixel.button,
+                           dark: Pixel.buttonDark)
+            )
+            .opacity(affordable ? 1 : 0.6)
         }
         .buttonStyle(.plain)
     }
@@ -132,16 +154,15 @@ struct FoodPickerView: View {
     private func priceLabel(price: Int, isFree: Bool, affordable: Bool) -> some View {
         if isFree {
             Text(verbatim: L("food.free"))
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.green)
+                .font(Pixel.mono(Pixel.bodySize, .medium))
+                .foregroundStyle(Pixel.hygiene.color)
         } else {
-            HStack(spacing: 3) {
-                Text(verbatim: "🪙")
-                    .font(.system(size: 12))
+            HStack(spacing: Pixel.u(0.75)) {
+                PixelIconView(icon: .coin, size: Pixel.u(3))
                 Text(verbatim: "\(price)")
-                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                    .font(Pixel.mono(Pixel.numberSize, .semibold))
             }
-            .foregroundStyle(affordable ? Color.primary : Color.red)
+            .foregroundStyle(affordable ? Pixel.coin.color : Pixel.warn.color)
         }
     }
 

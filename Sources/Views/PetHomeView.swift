@@ -140,32 +140,40 @@ struct PetHomeView: View {
     // MARK: - 状态栏
 
     private var statusBar: some View {
-        VStack(spacing: 10) {
-            HStack {
+        VStack(spacing: Pixel.u(2.5)) {
+            HStack(spacing: Pixel.u(2)) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(store.pet.name.isEmpty
                          ? L(store.pet.species.displayNameKey)
                          : store.pet.name)
-                        .font(.system(size: 17, weight: .bold, design: .monospaced))
+                        .font(Pixel.mono(Pixel.titleSize, .bold))
+                        .foregroundStyle(Pixel.text.color)
                     Text(verbatim: L("home.age", store.pet.ageInDays))
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .font(Pixel.mono(Pixel.labelSize))
+                        .foregroundStyle(Pixel.textDim.color)
                 }
-                Spacer()
-                HStack(spacing: 3) {
-                    Text(verbatim: "🪙").font(.system(size: 13))
+                Spacer(minLength: 0)
+
+                // 金币：像素图标 + 等宽数字
+                HStack(spacing: Pixel.u(1)) {
+                    PixelIconView(icon: .coin, size: Pixel.u(4))
                     Text(verbatim: "\(store.wallet.coins)")
-                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                        .font(Pixel.mono(Pixel.numberSize, .semibold))
+                        .foregroundStyle(Pixel.coin.color)
                 }
-                .foregroundStyle(.white.opacity(0.9))
-                Text(verbatim: store.pet.dominantNeed(at: now).emoji)
-                    .font(.system(size: 26))
+
+                // 当前最紧急的需求
+                PixelIconView(icon: .forNeed(store.pet.dominantNeed(at: now)),
+                              size: Pixel.u(6))
+
                 Button {
                     showSettings = true
                 } label: {
+                    // 齿轮暂时留 SF Symbol —— 自绘齿轮在 16px 下辨识度差，
+                    // 且它是系统级功能入口，用系统图标反而符合预期。
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 15))
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(Pixel.textDim.color)
                 }
                 #if DEBUG
                 // 长按进调试面板 —— 保留时间快进能力，但不占主界面。
@@ -175,35 +183,38 @@ struct PetHomeView: View {
                 #endif
             }
 
-            HStack(spacing: 8) {
-                StatBar(labelKey: "stat.satiety", value: store.pet.satiety(at: now), tint: .orange)
-                StatBar(labelKey: "stat.mood",    value: store.pet.mood(at: now),    tint: .pink)
-                StatBar(labelKey: "stat.hygiene", value: store.pet.hygiene(at: now), tint: .cyan)
+            HStack(spacing: Pixel.u(2)) {
+                StatBar(labelKey: "stat.satiety",
+                        value: store.pet.satiety(at: now), tint: Pixel.satiety)
+                StatBar(labelKey: "stat.mood",
+                        value: store.pet.mood(at: now), tint: Pixel.mood)
+                StatBar(labelKey: "stat.hygiene",
+                        value: store.pet.hygiene(at: now), tint: Pixel.hygiene)
             }
 
             Text(verbatim: L(store.pet.dominantNeed(at: now).messageKey))
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.75))
+                .font(Pixel.mono(Pixel.bodySize))
+                .foregroundStyle(Pixel.textDim.color)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(14)
-        .background(.black.opacity(0.32), in: RoundedRectangle(cornerRadius: 14))
-        .padding(.top, 8)
+        .padding(Pixel.u(3))
+        .pixelPanel()
+        .padding(.top, Pixel.u(2))
     }
 
     // MARK: - 操作栏
 
     private var actionBar: some View {
-        HStack(spacing: 10) {
-            ActionButton(titleKey: "action.feed", emoji: "🍖") {
+        HStack(spacing: Pixel.u(2)) {
+            ActionButton(titleKey: "action.feed", icon: .meat) {
                 showFood = true
             }
-            ActionButton(titleKey: "action.play", emoji: "🎾") {
+            ActionButton(titleKey: "action.play", icon: .ball) {
                 store.play()
                 scene.triggerPlay()
                 say(.stroked, delay: 0.7)
             }
-            ActionButton(titleKey: "action.clean", emoji: "🛁") {
+            ActionButton(titleKey: "action.clean", icon: .bath) {
                 store.clean()
                 scene.triggerClean()
                 say(.cleaned, delay: 0.8)
@@ -217,48 +228,51 @@ struct PetHomeView: View {
 private struct StatBar: View {
     let labelKey: String
     let value: Double
-    let tint: Color
+    let tint: Pixel.RGB
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: Pixel.u(1)) {
             Text(verbatim: L(labelKey))
-                .font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.6))
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.14))
-                    Capsule()
-                        .fill(value < 0.3 ? Color.red : tint)
-                        .frame(width: max(3, geo.size.width * value))
-                }
-            }
-            .frame(height: 6)
+                .font(Pixel.mono(Pixel.labelSize))
+                .foregroundStyle(Pixel.textDim.color)
+            PixelBar(value: value, tint: tint)
         }
     }
 }
 
+/// 像素风操作按钮。
+///
+/// 用 `PixelIcon` 而非 emoji —— emoji 的渐变高光会把像素感压掉。
+/// 按下时面板明暗边互换，模拟凹陷，这是像素 UI 的经典做法。
 private struct ActionButton: View {
     let titleKey: String
-    let emoji: String
+    let icon: PixelIcon
     let action: () -> Void
+
+    @State private var pressed = false
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 3) {
-                // ⚠️ 必须用 verbatim。Text("🍖") 走 LocalizedStringKey，
-                // 会把 emoji 当本地化 key 去 catalog 查，查不到返回空字符串。
-                // SpriteKit 的 SKLabelNode 不经过本地化，所以气泡里的 emoji 一直正常，
-                // 只有 SwiftUI 按钮的消失了。
-                Text(verbatim: emoji).font(.system(size: 22))
+            VStack(spacing: Pixel.u(1)) {
+                PixelIconView(icon: icon, size: Pixel.u(6))
                 Text(verbatim: L(titleKey))
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .font(Pixel.mono(Pixel.labelSize, .medium))
+                    .foregroundStyle(Pixel.text.color)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 11)
-            .background(.white.opacity(0.13), in: RoundedRectangle(cornerRadius: 13))
-            .foregroundStyle(.white)
+            .padding(.vertical, Pixel.u(1.75))
+            .background(
+                PixelPanel(fill: pressed ? Pixel.buttonPressed : Pixel.button,
+                           lite: pressed ? Pixel.buttonDark : Pixel.buttonLite,
+                           dark: pressed ? Pixel.buttonLite : Pixel.buttonDark)
+            )
         }
         .buttonStyle(.plain)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in pressed = true }
+                .onEnded { _ in pressed = false }
+        )
     }
 }
 
