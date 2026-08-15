@@ -171,7 +171,7 @@ final class PetScene: SKScene {
         }
         pet = SKSpriteNode(texture: firstFrame)
         pet.texture?.filteringMode = .nearest
-        pet.setScale(pixelScale)
+        pet.setScale(pixelScale * stage.bodyScale)
         pet.position = floor.clamp(CGPoint(x: size.width / 2, y: floor.y(atDepth: 0.35)))
         pet.zPosition = 10
         addChild(pet)
@@ -618,15 +618,17 @@ final class PetScene: SKScene {
     /// 当前深度下宠物应有的基准缩放。所有动画都要以它为基准，
     /// 不能写死 pixelScale —— 否则宠物在远处做动作会突然放大。
     private var currentPetScale: CGFloat {
-        guard let pet else { return pixelScale }
-        return pixelScale * floor.scaleFactor(atDepth: floor.depth(atY: pet.position.y))
+        guard let pet else { return pixelScale * stage.bodyScale }
+        // 三层相乘：基准像素密度 × 生命阶段体型 × 地板透视远近
+        return pixelScale
+            * stage.bodyScale
+            * floor.scaleFactor(atDepth: floor.depth(atY: pet.position.y))
     }
 
     /// 按当前 depth 调整宠物缩放，制造远近感。
     private func applyDepthScale() {
         guard let pet, !isSleeping else { return }
-        let f = floor.scaleFactor(atDepth: floor.depth(atY: pet.position.y))
-        pet.setScale(pixelScale * f)
+        pet.setScale(currentPetScale)
     }
 
     private func syncShadow() {

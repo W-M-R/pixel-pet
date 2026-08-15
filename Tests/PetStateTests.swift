@@ -264,4 +264,17 @@ final class PetStageTests: XCTestCase {
         XCTAssertEqual(back.totalFeedCount, 5)
         XCTAssertEqual(back.streakDays, 3)
     }
+
+    /// 体型缩放必须单调递增到成年，且幼年差异足够明显。
+    /// 最初只靠抽行（差 2-4px），实测肉眼不可辨，所以叠了 bodyScale。
+    func testBodyScaleGivesVisibleDifference() {
+        XCTAssertLessThan(PetStage.young.bodyScale, PetStage.growing.bodyScale)
+        XCTAssertLessThan(PetStage.growing.bodyScale, PetStage.adult.bodyScale)
+        XCTAssertEqual(PetStage.adult.bodyScale, 1.0)
+        // 老年比成年小但比成长期大
+        XCTAssertLessThan(PetStage.elder.bodyScale, PetStage.adult.bodyScale)
+        XCTAssertGreaterThan(PetStage.elder.bodyScale, PetStage.growing.bodyScale)
+        // 幼年应明显小于成年（至少差 20%）
+        XCTAssertLessThanOrEqual(PetStage.young.bodyScale, 0.8)
+    }
 }

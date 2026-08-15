@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 /// 生命阶段。
 ///
@@ -39,6 +40,25 @@ enum PetStage: String, Codable, CaseIterable, Sendable {
     }
 
     var displayNameKey: String { "stage.\(rawValue)" }
+
+    /// 体型缩放系数。
+    ///
+    /// 光靠抽行（改头身比）不够 —— 实测只差 2-6px，在 pixelScale=4 下
+    /// 肉眼几乎不可辨。所以再叠一层整体缩放，让「大小」也有区别。
+    ///
+    /// 注意必须是能让 pixelScale 保持接近整数倍的值，
+    /// 否则像素网格会错位、边缘发虚。pixelScale=4 时：
+    ///   0.75 → 3.0 ✅ 整数
+    ///   0.875 → 3.5 ⚠️ 半像素，但 32×32 源图下肉眼可接受
+    ///   1.0 → 4.0 ✅
+    var bodyScale: CGFloat {
+        switch self {
+        case .young:   return 0.75
+        case .growing: return 0.875
+        case .adult:   return 1.0
+        case .elder:   return 0.94
+        }
+    }
 
     /// 该阶段的 sheet 后缀。成年直接用源图，没有后缀。
     var sheetSuffix: String? {

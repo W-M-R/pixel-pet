@@ -33,11 +33,16 @@ COLS = 16
 ROWS = 8
 FOOT_Y = 26          # 成年帧的脚底行，所有阶段对齐到这里
 
-# 每个阶段：抽多少行、灰度混合比例
+# 每个阶段：抽多少躯干行、灰度混合比例
+#
+# ⚠️ 幅度调过一次：最初 drop=4/2/1，实际差异只有 2-4px，
+# 在 pixelScale=4 下肉眼几乎不可辨。现在加到 6/3/1，
+# 并配合 PetStage.bodyScale 做整体缩放（见 Swift 侧），
+# 双管才能让四个阶段一眼看出区别。
 STAGES = {
-    "young":   dict(drop=4, gray=0.0),
-    "growing": dict(drop=2, gray=0.0),
-    "elder":   dict(drop=1, gray=0.32),
+    "young":   dict(drop=6, gray=0.0),
+    "growing": dict(drop=3, gray=0.0),
+    "elder":   dict(drop=1, gray=0.34),
 }
 
 
@@ -68,7 +73,7 @@ def torso_zone(grid):
     ws = row_widths(grid, ys)
     peak_i = ws.index(max(ws))
     lo = ys[peak_i]
-    hi = ys[max(peak_i, len(ys) - 4)]      # 底部保留 3 行
+    hi = ys[max(peak_i, len(ys) - 3)]      # 底部保留 2 行
     if hi <= lo:
         return None
     return lo, hi
