@@ -144,7 +144,7 @@ struct PetHomeView: View {
             HStack(spacing: Pixel.u(2)) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(store.pet.name.isEmpty
-                         ? L(store.pet.species.displayNameKey)
+                         ? L(store.pet.breed.nameKey)
                          : store.pet.name)
                         .font(Pixel.mono(Pixel.titleSize, .bold))
                         .foregroundStyle(Pixel.text.color)
@@ -184,12 +184,11 @@ struct PetHomeView: View {
             }
 
             HStack(spacing: Pixel.u(2)) {
-                StatBar(labelKey: "stat.satiety",
-                        value: store.pet.satiety(at: now), tint: Pixel.satiety)
-                StatBar(labelKey: "stat.mood",
-                        value: store.pet.mood(at: now), tint: Pixel.mood)
-                StatBar(labelKey: "stat.hygiene",
-                        value: store.pet.hygiene(at: now), tint: Pixel.hygiene)
+                ForEach(StatDimension.all) { dim in
+                    StatBar(labelKey: dim.labelKey,
+                            value: dim.value(store.pet, now),
+                            tint: dim.tint)
+                }
             }
 
             Text(verbatim: L(store.pet.dominantNeed(at: now).messageKey))
@@ -209,15 +208,12 @@ struct PetHomeView: View {
             ActionButton(titleKey: "action.feed", icon: .meat) {
                 showFood = true
             }
-            ActionButton(titleKey: "action.play", icon: .ball) {
-                store.play()
-                scene.triggerPlay()
-                say(.stroked, delay: 0.7)
-            }
-            ActionButton(titleKey: "action.clean", icon: .bath) {
-                store.clean()
-                scene.triggerClean()
-                say(.cleaned, delay: 0.8)
+            ForEach(Interaction.all) { act in
+                ActionButton(titleKey: act.titleKey, icon: act.icon) {
+                    store.perform(act)
+                    scene.playAnimation(for: act.id)
+                    say(act.trigger, delay: act.sayDelay)
+                }
             }
         }
     }

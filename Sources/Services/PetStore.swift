@@ -17,9 +17,33 @@ final class PetStore {
     private(set) var tick: Date = Date()
     private var timer: Timer?
 
-    init() {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory,
-                                           in: .userDomainMask)[0]
+    /// app 默认的存档目录
+    static var defaultDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory,
+                                 in: .userDomainMask)[0]
+    }
+
+    /// 是否重排系统通知。
+    ///
+    /// 测试里要关掉 —— 否则每次 persist 都会真去调
+    /// UNUserNotificationCenter，既慢又有副作用。
+    private let schedulesNotifications: Bool
+
+    /// 是否跑心跳定时器。测试里不需要。
+    private let runsHeartbeat: Bool
+
+    /// - Parameters:
+    ///   - directory: 存档目录。测试传临时目录即可独立运行 ——
+    ///     原来这里硬编码 applicationSupportDirectory，
+    ///     导致 299 行的状态变更逻辑完全无法测试。
+    ///   - schedulesNotifications: 是否重排通知，测试关掉
+    ///   - runsHeartbeat: 是否跑心跳，测试关掉
+    init(directory: URL? = nil,
+         schedulesNotifications: Bool = true,
+         runsHeartbeat: Bool = true) {
+        self.schedulesNotifications = schedulesNotifications
+        self.runsHeartbeat = runsHeartbeat
+        let dir = directory ?? Self.defaultDirectory
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         self.fileURL = dir.appendingPathComponent("pet.json")
         self.walletURL = dir.appendingPathComponent("wallet.json")
@@ -52,7 +76,7 @@ final class PetStore {
         }
         self.wallet = loadedWallet
 
-        startHeartbeat()
+        if runsHeartbeat { startHeartbeat() }
     }
 
     // 注：@MainActor 类的 deinit 不能访问隔离状态，
@@ -141,6 +165,7 @@ final class PetStore {
                 ? L(pet.breed.nameKey)
                 : pet.name,
             species: pet.breed.englishNoun,
+            chineseSpecies: pet.breed.chineseNoun,
             satiety: pet.satiety(at: now),
             mood: pet.mood(at: now),
             hygiene: pet.hygiene(at: now),
@@ -195,12 +220,19 @@ final class PetStore {
         return true
     }
 
-    func play() {
+    /// 执行一次互动。
+    ///
+    /// play/clean 原本是两个逐字同构的 4 行方法，每加一个互动就复制一次。
+    /// 现在把「改哪个时间戳、涨哪个计数」交给 `Interaction.apply`。
+    func perform(_ interaction: Interaction) {
         extendAwakeIfNeeded()
-        pet.lastPlayedAt = Date()
-        pet.totalPlayCount = (pet.totalPlayCount ?? 0) + 1
+        interaction.apply(&pet, Date())
         persist()
     }
+
+    /// 保留具名方法 —— 调用处读起来比 `perform(.play)` 更直白，
+    /// 且测试和调试面板已在用。
+    func play() { perform(.play) }
 
     /// 抚摸。也算陪玩（涨心情），但独立成一个方法，
     /// 因为要加冷却 —— 连续戳不该无限刷心情。
@@ -237,12 +269,7 @@ final class PetStore {
         wakeUp()
     }
 
-    func clean() {
-        extendAwakeIfNeeded()
-        pet.lastCleanedAt = Date()
-        pet.totalCleanCount = (pet.totalCleanCount ?? 0) + 1
-        persist()
-    }
+    func clean() { perform(.clean) }
 
     func rename(_ newName: String) {
         pet.name = newName
@@ -261,6 +288,16 @@ final class PetStore {
     /// 调试用：把时间戳往前推，模拟放置一段时间后的状态。
     /// 这是验证「读时算」是否正确的最快方式。
     #if DEBUG
+    /// 测试专用：直接置入状态以构造场景。
+    ///
+    /// `pet`/`wallet` 是 `private(set)` —— 生产代码只能通过语义方法改状态，
+    /// 这个约束是对的，不放开。测试要造「饿透的宠物」「没钱的钱包」
+    /// 这类场景，走这个显式的后门比放开 setter 安全。
+    func debugSet(pet newPet: PetState? = nil, wallet newWallet: PetWallet? = nil) {
+        if let newPet { pet = newPet }
+        if let newWallet { wallet = newWallet }
+    }
+
     func debugAge(by seconds: TimeInterval) {
         pet.lastFedAt = pet.lastFedAt.addingTimeInterval(-seconds)
         pet.lastPlayedAt = pet.lastPlayedAt.addingTimeInterval(-seconds)
@@ -293,6 +330,7 @@ final class PetStore {
         try? data.write(to: fileURL, options: .atomic)
         tick = Date()
         // 状态变了就重排通知 —— 因为「何时会饿」是从时间戳算的
+        guard schedulesNotifications else { return }
         let name = pet.name.isEmpty ? L(pet.breed.nameKey) : pet.name
         PetNotifications.reschedule(for: pet, petName: name)
     }

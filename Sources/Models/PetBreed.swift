@@ -120,6 +120,10 @@ struct PetBreed: Identifiable, Hashable, Codable, Sendable {
     let colorCount: Int
     /// AI 台词里描述物种用的英文词
     let englishNoun: String
+    /// AI 台词里描述物种用的中文词。
+    /// 单独存而不是拿 nameKey 查表 —— prompt 要的是「小猫」这种口语称呼，
+    /// 而 nameKey 的译文是「猫」这种正式名。
+    let chineseNoun: String
 
     var sheetName: String { id }
 
@@ -135,9 +139,11 @@ struct PetBreed: Identifiable, Hashable, Codable, Sendable {
     // MARK: - 注册表
 
     static let cat = PetBreed(id: "cat", nameKey: "breed.cat",
-                              colorCount: 4, englishNoun: "cat")
+                              colorCount: 4,
+                              englishNoun: "cat", chineseNoun: "小猫")
     static let dog = PetBreed(id: "dog", nameKey: "breed.dog",
-                              colorCount: 4, englishNoun: "dog")
+                              colorCount: 4,
+                              englishNoun: "dog", chineseNoun: "小狗")
 
     static let all: [PetBreed] = [.cat, .dog]
 

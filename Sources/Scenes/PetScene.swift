@@ -784,6 +784,19 @@ final class PetScene: SKScene {
         pet.run(.repeat(hop, count: 2), withKey: "hop")
     }
 
+    /// 按互动 id 播对应动画。
+    ///
+    /// 只做分发，不归一动画本体 —— 三个动画的实现方式完全不同
+    /// （帧序列 / moveTo 序列 / fadeAlpha 序列），强行抽象成协议
+    /// 只能消掉几行 emote 调用，却让「洗澡时宠物做什么」变得要跳转才能看懂。
+    func playAnimation(for interactionID: String) {
+        switch interactionID {
+        case "play":  triggerPlay()
+        case "clean": triggerClean()
+        default:      break
+        }
+    }
+
     func triggerClean() {
         guard let pet else { return }
         showEmote(.droplet)

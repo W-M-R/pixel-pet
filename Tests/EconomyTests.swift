@@ -410,7 +410,8 @@ final class PetChatPolicyTests: XCTestCase {
     /// 否则模型会输出中英混杂。
     func testPromptDescriptionsAreLocalized() {
         let ctx = PetLineContext(
-            name: "小咪", species: "cat", satiety: 0.2, mood: 0.9,
+            name: "小咪", species: "cat", chineseSpecies: "小猫",
+            satiety: 0.2, mood: 0.9,
             hygiene: 0.8, isDrowsy: false, ageInDays: 10, trigger: .fed)
 
         let zh = ctx.chineseStateDescription
