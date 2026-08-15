@@ -35,12 +35,9 @@ final class PetScene: SKScene {
     private var emoteSheet: SKTexture?
     private var pet: SKSpriteNode!
     private var shadow: SKShapeNode!
-    private var bubble: SKNode?
-    /// 气泡相对宠物脚底的竖直偏移，用于每帧跟随。
-    /// 存下来是因为台词气泡和 emote 气泡的高度不同。
-    private var bubbleYOffset: CGFloat = 0
-    /// 气泡自身宽度的一半，用于跟随时做屏幕边界钳制。
-    private var bubbleHalfWidth: CGFloat = 0
+    /// 气泡层。实现在 BubbleLayer —— 它通过 anchor 闭包取位置，
+    /// 不需要知道宠物是什么、有没有换过、当前缩放多少。
+    private var bubbles: BubbleLayer?
     private var foodNode: SKNode?
 
     private var colorIndex: Int = 0
@@ -187,6 +184,18 @@ final class PetScene: SKScene {
 
         applyWalkAnimation()
         syncShadow()
+
+        // anchor 用闭包而非直接传节点 —— 宠物会换 sheet、换缩放，
+        // 闭包保证每帧取到的都是当前值
+        bubbles = BubbleLayer(
+            parent: self,
+            unit: pixelScale,
+            emoteSheet: emoteSheet,
+            anchor: { [weak self] in
+                guard let self, self.pet != nil else { return .zero }
+                return CGPoint(x: self.pet.position.x, y: self.petFeetY)
+            },
+            sceneWidth: { [weak self] in self?.size.width ?? 0 })
     }
 
     override func didChangeSize(_ oldSize: CGSize) {
@@ -239,192 +248,11 @@ final class PetScene: SKScene {
     /// 关键是**所有尺寸取 pixelScale 的整数倍**，让手绘部分和 32×32
     /// 素材保持同一像素密度 —— 否则会出现「细线条 + 粗像素」混在一起
     /// 的廉价感。
+    /// 画房间。实现在 `RoomRenderer` —— 它只依赖 size/wallBaseY/unit，
+    /// 不读宠物状态，抽出去后改房间视觉不用在行为逻辑里翻找。
     private func buildFloor() {
-        let u = pixelScale                    // 1 源像素 = pixelScale pt
-        let base = (wallBaseY / u).rounded() * u   // 墙脚线对齐像素网格
-
-        // ── 墙 ──
-        let wall = SKSpriteNode(color: Palette.wall,
-                                size: CGSize(width: size.width, height: size.height - base))
-        wall.anchorPoint = CGPoint(x: 0, y: 0)
-        wall.position = CGPoint(x: 0, y: base)
-        wall.zPosition = -6
-        addChild(wall)
-
-        // 墙纸竖条纹：每 8 源像素一条宽 2px 的条，对比度拉到看得见为止
-        var x: CGFloat = 0
-        while x < size.width {
-            let stripe = SKSpriteNode(color: Palette.wallStripe,
-                                      size: CGSize(width: u * 3, height: size.height - base))
-            stripe.anchorPoint = CGPoint(x: 0, y: 0)
-            stripe.position = CGPoint(x: x, y: base)
-            stripe.zPosition = -5
-            addChild(stripe)
-            x += u * 16
-        }
-
-        buildWallDecor(base: base, u: u)
-
-        // ── 地板 ──
-        let floor = SKSpriteNode(color: Palette.floor,
-                                 size: CGSize(width: size.width, height: base))
-        floor.anchorPoint = CGPoint(x: 0, y: 0)
-        floor.position = .zero
-        floor.zPosition = -6
-        addChild(floor)
-
-        // 地板：横向木板 + 竖向错缝。
-        //
-        // 纵深全靠这个纹理表现 —— 板宽随距离递增（远处密、近处疏），
-        // 这是真实透视里地板的样子。比画梯形轮廓自然得多：
-        // 真实房间的地板边缘不会明显收缩，收缩了就像漏斗。
-        var y: CGFloat = base
-        var plankH: CGFloat = u * 5          // 最远处的板最窄
-        var rowIndex = 0
-
-        while y > 0 {
-            let h = min(plankH, y)
-            let rowY = y - h
-
-            // 隔行换深浅，木板质感
-            if rowIndex % 2 == 1 {
-                let band = SKSpriteNode(color: Palette.floorAlt,
-                                        size: CGSize(width: size.width, height: h))
-                band.anchorPoint = CGPoint(x: 0, y: 0)
-                band.position = CGPoint(x: 0, y: rowY)
-                band.zPosition = -5.5
-                addChild(band)
-            }
-
-            // 板缝
-            let seam = SKSpriteNode(color: Palette.floorSeam,
-                                    size: CGSize(width: size.width, height: u))
-            seam.anchorPoint = CGPoint(x: 0, y: 0)
-            seam.position = CGPoint(x: 0, y: rowY)
-            seam.zPosition = -5
-            addChild(seam)
-
-            // 竖向错缝：每行的短竖线错开半格，避免看起来像跑道
-            let seg = u * 48
-            var vx = (CGFloat(rowIndex % 2) * seg / 2)
-            while vx < size.width {
-                let v = SKSpriteNode(color: Palette.floorSeam,
-                                     size: CGSize(width: u, height: h))
-                v.anchorPoint = CGPoint(x: 0, y: 0)
-                v.position = CGPoint(x: (vx / u).rounded() * u, y: rowY)
-                v.zPosition = -5
-                addChild(v)
-                vx += seg
-            }
-
-            y = rowY
-            plankH += u * 2.2                // 越靠近镜头板越宽
-            rowIndex += 1
-        }
-
-        // ── 踢脚线：坐在墙脚线上，两像素高，亮暗两色做立体感 ──
-        let skirtDark = SKSpriteNode(color: Palette.skirtingDark,
-                                     size: CGSize(width: size.width, height: u))
-        skirtDark.anchorPoint = CGPoint(x: 0, y: 0)
-        skirtDark.position = CGPoint(x: 0, y: base)
-        skirtDark.zPosition = 0.5           // 压在家具底边之上一点，藏住接缝
-        addChild(skirtDark)
-
-        let skirtLite = SKSpriteNode(color: Palette.skirtingLite,
-                                     size: CGSize(width: size.width, height: u))
-        skirtLite.anchorPoint = CGPoint(x: 0, y: 0)
-        skirtLite.position = CGPoint(x: 0, y: base + u)
-        skirtLite.zPosition = 0.5
-        addChild(skirtLite)
-    }
-
-    /// 墙上的装饰：窗、挂画、壁灯。
-    ///
-    /// 全部手绘像素块，尺寸严格取 u 的整数倍。**都是侧视/正视**，
-    /// 和宠物的视角一致 —— 这是不用现成家具包的原因。
-    private func buildWallDecor(base: CGFloat, u: CGFloat) {
-        func block(_ bx: CGFloat, _ by: CGFloat, _ bw: CGFloat, _ bh: CGFloat,
-                   _ color: SKColor, _ z: CGFloat) {
-            let n = SKSpriteNode(color: color, size: CGSize(width: bw, height: bh))
-            n.anchorPoint = CGPoint(x: 0, y: 0)
-            n.position = CGPoint(x: (bx / u).rounded() * u,
-                                 y: (by / u).rounded() * u)
-            n.zPosition = z
-            addChild(n)
-        }
-
-        // ── 窗（正视，居中偏右）──
-        let w = u * 38, h = u * 28
-        let x = size.width * 0.60 - w / 2
-        let y = base + u * 20
-
-        block(x - u * 2, y - u * 2, w + u * 4, h + u * 4, Palette.frameDark, -3.5)
-        block(x, y, w, h, Palette.sky, -3.4)
-        for (sx, sy) in [(5, 23), (13, 18), (28, 24), (33, 15), (20, 25), (9, 12)] {
-            block(x + u * CGFloat(sx), y + u * CGFloat(sy), u, u, Palette.moon, -3.35)
-        }
-        block(x, y, w, u * 8, Palette.hillFar, -3.33)
-        block(x, y, u * 20, u * 5, Palette.hill, -3.32)
-        // 月牙：亮圆 + 偏移的天空色圆盖住一部分
-        block(x + u * 25, y + u * 19, u * 5, u * 5, Palette.moon, -3.2)
-        block(x + u * 27, y + u * 21, u * 4, u * 4, Palette.sky, -3.19)
-        // 窗棂
-        block(x + w / 2 - u / 2, y, u, h, Palette.frameDark, -3.1)
-        block(x, y + h / 2 - u / 2, w, u, Palette.frameDark, -3.1)
-        // 窗台
-        block(x - u * 3, y - u * 3, w + u * 6, u * 2, Palette.sill, -3.0)
-
-        // ── 挂画（正视，偏左）──
-        let pw = u * 14, ph = u * 11
-        let px2 = size.width * 0.18 - pw / 2
-        let py2 = base + u * 28
-        block(px2 - u, py2 - u, pw + u * 2, ph + u * 2, Palette.frameDark, -3.5)
-        block(px2, py2, pw, ph, Palette.artBg, -3.4)
-        block(px2, py2, pw, u * 4, Palette.artHill, -3.3)
-        block(px2 + u * 9, py2 + u * 7, u * 3, u * 3, Palette.artSun, -3.3)
-
-        // ── 壁灯（侧视，画的右侧）──
-        let lx = size.width * 0.32
-        let ly = base + u * 34
-        block(lx, ly, u * 2, u * 5, Palette.frameDark, -3.4)      // 支架
-        block(lx - u * 2, ly + u * 5, u * 6, u * 3, Palette.lampShade, -3.3)
-        // 灯光：一片半透明暖色向下扩散
-        for i in 0..<3 {
-            let gw = u * CGFloat(6 + i * 4)
-            block(lx + u - gw / 2, ly - u * CGFloat(i * 3), gw, u * 3,
-                  Palette.lampGlow.withAlphaComponent(0.10 - CGFloat(i) * 0.03), -3.25)
-        }
-    }
-
-    /// 房间配色。集中放一处，方便整体调色而不用满场景找魔数。
-    private enum Palette {
-        // 墙：暖调米色，比原来的冷紫更像家里
-        static let wall         = SKColor(red: 0.85, green: 0.78, blue: 0.68, alpha: 1)
-        static let wallStripe   = SKColor(red: 0.82, green: 0.755, blue: 0.655, alpha: 1)
-        // 地板：木色，和墙有明确冷暖/明度区分
-        static let floor        = SKColor(red: 0.62, green: 0.44, blue: 0.31, alpha: 1)
-        static let floorSeam    = SKColor(red: 0.50, green: 0.34, blue: 0.23, alpha: 1)
-        static let floorAlt     = SKColor(red: 0.58, green: 0.41, blue: 0.29, alpha: 1)
-        static let skirtingDark = SKColor(red: 0.38, green: 0.26, blue: 0.19, alpha: 1)
-        static let skirtingLite = SKColor(red: 0.72, green: 0.56, blue: 0.42, alpha: 1)
-        // 窗外夜景
-        static let sky          = SKColor(red: 0.14, green: 0.19, blue: 0.36, alpha: 1)
-        static let hill         = SKColor(red: 0.17, green: 0.27, blue: 0.31, alpha: 1)
-        static let hillFar      = SKColor(red: 0.20, green: 0.24, blue: 0.36, alpha: 1)
-        static let moon         = SKColor(red: 0.98, green: 0.96, blue: 0.86, alpha: 1)
-        static let frameDark    = SKColor(red: 0.35, green: 0.24, blue: 0.18, alpha: 1)
-        static let sill         = SKColor(red: 0.72, green: 0.56, blue: 0.42, alpha: 1)
-        // 挂画
-        static let artBg        = SKColor(red: 0.56, green: 0.72, blue: 0.78, alpha: 1)
-        static let artHill      = SKColor(red: 0.42, green: 0.60, blue: 0.42, alpha: 1)
-        static let artSun       = SKColor(red: 0.96, green: 0.80, blue: 0.42, alpha: 1)
-        // 台词气泡
-        static let speechFill   = SKColor(red: 0.98, green: 0.97, blue: 0.94, alpha: 1)
-        static let speechBorder = SKColor(red: 0.24, green: 0.20, blue: 0.24, alpha: 1)
-        static let speechText   = SKColor(red: 0.18, green: 0.16, blue: 0.20, alpha: 1)
-        // 壁灯
-        static let lampShade    = SKColor(red: 0.90, green: 0.74, blue: 0.44, alpha: 1)
-        static let lampGlow     = SKColor(red: 1.00, green: 0.92, blue: 0.70, alpha: 1)
+        RoomRenderer.build(into: self, size: size,
+                           wallBaseY: wallBaseY, unit: pixelScale)
     }
 
     // MARK: - 动画
@@ -545,7 +373,7 @@ final class PetScene: SKScene {
             }
         }
         syncShadow()
-        syncBubble()
+        bubbles?.sync()
     }
 
     /// 由 UI 层按 PetState.energy 驱动。困了就趴下，休息够了自己起来。
@@ -694,7 +522,9 @@ final class PetScene: SKScene {
     /// 所以脚底 = 中心 - (16 - 5) × pixelScale。
     private var petFeetY: CGFloat {
         let frameH = PetSpriteSheet.frameSize.height        // 32
-        let bottomPadding: CGFloat = 5                      // 实测内容底边 y=26
+        // 按品种取 —— 原来写死 5（按猫实测），而狗的内容底边在 y=28，
+        // 所以狗的影子和食盆一直偏 2 源像素
+        let bottomPadding = breed.footPadding
         // ⚠️ 纹理已预放大 prescale 倍，pet.yScale 相应变小了同样倍数。
         // 「1 源像素在屏幕上占多少 pt」= yScale × prescale。
         return pet.position.y
@@ -728,9 +558,9 @@ final class PetScene: SKScene {
             container.addChild(n)
         }
 
-        let bowlDark = SKColor(red: 0.42, green: 0.26, blue: 0.20, alpha: 1)
-        let bowlLite = SKColor(red: 0.58, green: 0.38, blue: 0.28, alpha: 1)
-        let kibble   = SKColor(red: 0.80, green: 0.58, blue: 0.30, alpha: 1)
+        let bowlDark = RoomPalette.bowlDark.sk
+        let bowlLite = RoomPalette.bowlLite.sk
+        let kibble   = RoomPalette.bowlFood.sk
 
         // 盆身（宽 12 源像素，居中在原点两侧）
         block(-6, 0, 12, 2, bowlDark)
@@ -811,159 +641,22 @@ final class PetScene: SKScene {
         pet.run(fade, withKey: "clean")
     }
 
-    func showNeedBubble(_ need: PetNeed) {
-        guard need != .content else { return }
-        if let emote = need.emote {
-            showEmote(emote)
-        } else {
-            // 这套 emotes 里没有食物图标，饿的时候只能用 emoji
-            showEmojiBubble(need.emoji)
-        }
+    // MARK: - 气泡（实现在 BubbleLayer）
+
+    /// 台词气泡。转发给 BubbleLayer —— 保留这个方法是因为
+    /// PetHomeView 已在多处调用，改签名的收益不大。
+    func showSpeech(_ text: String,
+                    duration: TimeInterval = BubbleLayer.defaultSpeechDuration) {
+        bubbles?.speak(text, duration: duration)
     }
 
-    /// 优先用像素 emote；切图失败就回退到 emoji。
-    /// 回退是必要的 —— emotes.png 的网格是反推出来的，
-    /// 万一某个格子坐标不对，不能让气泡直接消失。
+    func showNeedBubble(_ need: PetNeed) { bubbles?.need(need) }
+
     private func showEmote(_ emote: RoomSpriteSheet.Emote) {
-        guard let emoteSheet,
-              let tex = RoomSpriteSheet.emoteTexture(from: emoteSheet, emote) else {
-            showEmojiBubble(fallbackEmoji(for: emote))
-            return
-        }
-        let sprite = SKSpriteNode(texture: tex)
-        sprite.texture?.filteringMode = .nearest
-        sprite.setScale(pixelScale * 0.9)
-        present(bubbleNode: sprite)
+        bubbles?.emote(emote)
     }
 
-    /// 台词气泡：像素风的白底黑边对话框 + 小尾巴。
-    ///
-    /// 用多行文本而不是单行 —— 台词可能十几个字，单行会超出屏幕。
-    /// 尺寸取 pixelScale 整数倍，和其余像素元素保持同密度。
-    func showSpeech(_ text: String, duration: TimeInterval = 6.0) {
-        guard let pet, !text.isEmpty else { return }
-        bubble?.removeFromParent()
-
-        let u = pixelScale
-        let maxWidth = size.width * 0.62
-
-        let label = SKLabelNode(text: text)
-        label.fontName = "Menlo-Bold"
-        label.fontSize = 13
-        label.fontColor = Palette.speechText
-        label.numberOfLines = 0
-        label.preferredMaxLayoutWidth = maxWidth - u * 6
-        label.horizontalAlignmentMode = .center
-        label.verticalAlignmentMode = .center
-
-        let textSize = label.calculateAccumulatedFrame().size
-        let boxW = min(maxWidth, max(u * 20, textSize.width + u * 6))
-        let boxH = max(u * 10, textSize.height + u * 5)
-
-        let container = SKNode()
-
-        // 外边框（深色）
-        let border = SKSpriteNode(color: Palette.speechBorder,
-                                  size: CGSize(width: boxW + u * 2, height: boxH + u * 2))
-        border.position = .zero
-        container.addChild(border)
-
-        // 内底（浅色）
-        let fill = SKSpriteNode(color: Palette.speechFill,
-                                size: CGSize(width: boxW, height: boxH))
-        fill.position = .zero
-        container.addChild(fill)
-
-        label.position = .zero
-        label.zPosition = 1
-        container.addChild(label)
-
-        // 尾巴：两级台阶指向宠物
-        for (i, w) in [3, 1].enumerated() {
-            let step = SKSpriteNode(color: Palette.speechFill,
-                                    size: CGSize(width: u * CGFloat(w), height: u))
-            step.position = CGPoint(x: 0, y: -boxH / 2 - u * CGFloat(i) - u / 2)
-            container.addChild(step)
-            let edge = SKSpriteNode(color: Palette.speechBorder,
-                                    size: CGSize(width: u * CGFloat(w) + u * 2, height: u))
-            edge.position = CGPoint(x: 0, y: step.position.y - u * 0.5)
-            edge.zPosition = -1
-            container.addChild(edge)
-        }
-
-        // 记下偏移量，update() 里每帧跟随宠物
-        bubbleYOffset = pixelScale * 26 + boxH / 2
-        bubbleHalfWidth = boxW / 2 + u * 3
-        container.zPosition = 20
-        container.alpha = 0
-        container.setScale(0.85)
-        addChild(container)
-        bubble = container
-        syncBubble()
-
-        // 淡出**不能**用 moveBy —— 每帧的 syncBubble 会覆盖位移，
-        // 两者打架会让气泡抖动。只做淡出和缩放。
-        container.run(.sequence([
-            .group([.fadeIn(withDuration: 0.14), .scale(to: 1, duration: 0.16)]),
-            .wait(forDuration: duration),
-            .group([.fadeOut(withDuration: 0.28), .scale(to: 0.94, duration: 0.28)]),
-            .removeFromParent()
-        ]))
-    }
-
-    /// 让气泡跟着宠物走。每帧调用。
-    ///
-    /// 之前气泡位置在创建时固定，宠物走开后气泡留在原地。
-    /// 现在每帧重算，并做屏幕边界钳制，避免气泡跑出画面。
-    private func syncBubble() {
-        guard let bubble, let pet, bubble.parent != nil else { return }
-        let halfW = max(bubbleHalfWidth, pixelScale * 4)
-        let x = min(size.width - halfW, max(halfW, pet.position.x))
-        bubble.position = CGPoint(x: x, y: petFeetY + bubbleYOffset)
-    }
-
-    private func showEmojiBubble(_ text: String) {
-        let label = SKLabelNode(text: text)
-        label.fontSize = 26
-        label.verticalAlignmentMode = .center
-        present(bubbleNode: label)
-    }
-
-    private func present(bubbleNode node: SKNode) {
-        guard pet != nil else { return }
-        bubble?.removeFromParent()
-
-        // 气泡浮在头顶上方。头顶 = 脚底 + 内容高度(19 源像素)，再留 4 像素间隙
-        bubbleYOffset = pixelScale * 23
-        bubbleHalfWidth = pixelScale * 5
-        node.zPosition = 20
-        node.alpha = 0
-        addChild(node)
-        bubble = node
-        syncBubble()
-
-        // 同样不用 moveBy，避免和 syncBubble 的每帧定位冲突
-        node.run(.sequence([
-            .fadeIn(withDuration: 0.15),
-            .wait(forDuration: 1.1),
-            .fadeOut(withDuration: 0.3),
-            .removeFromParent()
-        ]))
-    }
-
-    private func fallbackEmoji(for emote: RoomSpriteSheet.Emote) -> String {
-        switch emote {
-        case .heart:      return "💗"
-        case .heartbreak: return "💔"
-        case .sleep:      return "💤"
-        case .music:      return "🎵"
-        case .droplet:    return "💧"
-        case .alert:      return "❗"
-        case .question:   return "❓"
-        case .ellipsis:   return "💭"
-        case .sweat:      return "💦"
-        }
-    }
+    private func showEmojiBubble(_ text: String) { bubbles?.emoji(text) }
 
     // MARK: - 触摸
 

@@ -19,7 +19,9 @@ struct PetHomeView: View {
         ZStack {
             // 房间由 PetScene 自己画（墙/地板/家具），这样家具与地面的
             // 相对位置只有一处真相，不会 SwiftUI 和 SpriteKit 两边对不上。
-            Color(red: 0.85, green: 0.78, blue: 0.68).ignoresSafeArea()
+            // 兜底色引用 RoomPalette，不再手抄字面量 ——
+            // 原来这里和 RoomPalette.wall 同值但各写一份，改一处忘一处。
+            RoomPalette.wall.color.ignoresSafeArea()
 
             SpriteView(scene: scene, options: [.allowsTransparency])
                 .ignoresSafeArea()
@@ -99,7 +101,7 @@ struct PetHomeView: View {
             FoodPickerView(store: store) { food in
                 guard store.feed(food) else { return }
                 scene.triggerEat()
-                say(.fed, delay: 1.6)     // 等咀嚼动画演完再说话
+                say(.fed, delay: Interaction.Duration.sayAfterEat)
             }
         }
         .sheet(isPresented: $showSettings) {

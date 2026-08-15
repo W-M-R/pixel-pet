@@ -68,12 +68,13 @@ enum PetLines {
         case .appeared: break
         }
 
-        if c.satiety < 0.15 { return .veryHungry }
-        if c.satiety < 0.4 { return .hungry }
-        if c.hygiene < 0.3 { return .dirty }
-        if c.mood < 0.3 { return .bored }
+        // 台词的阈值比 HUD 更严 —— 台词低频触发，只在真的很惨时说重话
+        if c.satiety < StateThreshold.lineUrgent { return .veryHungry }
+        if c.satiety < StateThreshold.lineMild { return .hungry }
+        if c.hygiene < StateThreshold.critical { return .dirty }
+        if c.mood < StateThreshold.critical { return .bored }
         if c.isDrowsy { return .sleepy }
-        if c.mood > 0.75 { return .happy }
+        if c.mood > StateThreshold.lineHappy { return .happy }
         return .greeting
     }
 }

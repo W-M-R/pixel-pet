@@ -118,6 +118,18 @@ struct PetBreed: Identifiable, Hashable, Codable, Sendable {
     let nameKey: String
     /// 该 sheet 有几种毛色（LPC 标准是 4）
     let colorCount: Int
+    /// 侧视帧里内容底边到格子底边的空白行数（源像素）。
+    ///
+    /// 决定影子、食盆、气泡挂在哪 —— 写死一个值的话，
+    /// 轮廓不同的品种会出现「影子和脚脱开」。
+    ///
+    /// 实测（解码 PNG 逐行扫 alpha，r0c0 侧视帧）：
+    ///   cat 内容底边 y=26 → 31-26 = 5
+    ///   dog 内容底边 y=28 → 31-28 = 3
+    /// 原来 `PetScene` 硬编码 5（按猫测的），所以**狗的影子和食盆
+    /// 一直偏了 2 源像素（8pt）**。
+    let footPadding: CGFloat
+
     /// AI 台词里描述物种用的英文词
     let englishNoun: String
     /// AI 台词里描述物种用的中文词。
@@ -139,10 +151,10 @@ struct PetBreed: Identifiable, Hashable, Codable, Sendable {
     // MARK: - 注册表
 
     static let cat = PetBreed(id: "cat", nameKey: "breed.cat",
-                              colorCount: 4,
+                              colorCount: 4, footPadding: 5,
                               englishNoun: "cat", chineseNoun: "小猫")
     static let dog = PetBreed(id: "dog", nameKey: "breed.dog",
-                              colorCount: 4,
+                              colorCount: 4, footPadding: 3,
                               englishNoun: "dog", chineseNoun: "小狗")
 
     static let all: [PetBreed] = [.cat, .dog]

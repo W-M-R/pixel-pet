@@ -359,3 +359,117 @@ final class PetStageTests: XCTestCase {
         XCTAssertLessThanOrEqual(PetStage.young.bodyScale, 0.8)
     }
 }
+
+// MARK: - 解耦后的模块边界
+
+/// 阈值集中层。
+///
+/// 原来「多饿才算饿」散在 4 处：`dominantNeed`(0.35)、
+/// `PetLines.pickCategory`(0.15/0.4)、以及 AI prompt 的中英文各一份(0.25/0.5)。
+/// 最后两处必须手动同步，改一边忘一边会让两种语言描述出不同状态。
+final class StateThresholdTests: XCTestCase {
+
+    func testLevelBoundaries() {
+        XCTAssertEqual(StateThreshold.level(0.0), .critical)
+        XCTAssertEqual(StateThreshold.level(0.24), .critical)
+        XCTAssertEqual(StateThreshold.level(0.25), .low)
+        XCTAssertEqual(StateThreshold.level(0.49), .low)
+        XCTAssertEqual(StateThreshold.level(0.5), .ok)
+        XCTAssertEqual(StateThreshold.level(0.79), .ok)
+        XCTAssertEqual(StateThreshold.level(0.8), .high)
+        XCTAssertEqual(StateThreshold.level(1.0), .high)
+    }
+
+    /// 档位必须可比较 —— `<= .low` 这类写法依赖它
+    func testLevelIsOrdered() {
+        XCTAssertLessThan(StateThreshold.Level.critical, .low)
+        XCTAssertLessThan(StateThreshold.Level.low, .ok)
+        XCTAssertLessThan(StateThreshold.Level.ok, .high)
+    }
+
+    /// **中英文 prompt 必须描述出同样的状态。**
+    ///
+    /// 这是集中阈值的核心目的 —— 扫一遍状态空间，
+    /// 确认两种语言的「饿/无聊/脏」判断完全一致。
+    func testPromptDescriptionsAgreeAcrossLanguages() {
+        for v in stride(from: 0.0, through: 1.0, by: 0.05) {
+            let ctx = PetLineContext(
+                name: "T", species: "cat", chineseSpecies: "小猫",
+                satiety: v, mood: v, hygiene: v,
+                isDrowsy: false, ageInDays: 1, trigger: .appeared)
+
+            let zh = ctx.chineseStateDescription
+            let en = ctx.englishStateDescription
+
+            XCTAssertEqual(zh.contains("非常饿"), en.contains("very hungry"),
+                           "satiety=\(v) 时中英文的「很饿」判断不一致")
+            XCTAssertEqual(zh.contains("有点饿"), en.contains("a bit hungry"),
+                           "satiety=\(v) 时中英文的「有点饿」判断不一致")
+            XCTAssertEqual(zh.contains("无聊"), en.contains("bored"),
+                           "mood=\(v) 时中英文的「无聊」判断不一致")
+            XCTAssertEqual(zh.contains("很开心"), en.contains("happy"),
+                           "mood=\(v) 时中英文的「开心」判断不一致")
+            XCTAssertEqual(zh.contains("脏"), en.contains("dirty"),
+                           "hygiene=\(v) 时中英文的「脏」判断不一致")
+        }
+    }
+
+    /// HUD 报警线要比台词的「一般」档宽松 ——
+    /// 状态栏一直报警会让人焦虑，台词是低频触发可以更严
+    func testHudAlertIsLooserThanLineThresholds() {
+        XCTAssertGreaterThan(StateThreshold.hudAlert, StateThreshold.lineUrgent)
+        XCTAssertLessThan(StateThreshold.hudAlert, StateThreshold.low)
+    }
+}
+
+/// 品种的几何参数。
+final class PetBreedGeometryTests: XCTestCase {
+
+    /// `footPadding` 决定影子/食盆/气泡挂在哪。
+    ///
+    /// 原来 `PetScene` 硬编码 5（按猫实测），狗的内容底边在 y=28，
+    /// 所以狗的影子和食盆一直偏 2 源像素。这个测试锁住按品种取值。
+    func testFootPaddingDiffersByBreed() {
+        XCTAssertEqual(PetBreed.cat.footPadding, 5)
+        XCTAssertEqual(PetBreed.dog.footPadding, 3)
+    }
+
+    /// 每个品种都要有合理的 footPadding（不能为 0 或超过高一半）
+    func testAllBreedsHaveSaneFootPadding() {
+        for b in PetBreed.all {
+            XCTAssertGreaterThan(b.footPadding, 0, "\(b.id) 的 footPadding 应大于 0")
+            XCTAssertLessThan(b.footPadding, PetSpriteSheet.frameSize.height / 2,
+                              "\(b.id) 的 footPadding 过大")
+        }
+    }
+
+    /// 中英文物种称呼都要有 —— 原来中文是硬编码三元，加品种会显示错
+    func testEveryBreedHasBothNouns() {
+        for b in PetBreed.all {
+            XCTAssertFalse(b.englishNoun.isEmpty)
+            XCTAssertFalse(b.chineseNoun.isEmpty)
+        }
+    }
+}
+
+/// 互动动画时长与台词延迟的关系。
+final class InteractionDurationTests: XCTestCase {
+
+    /// 咀嚼动画时长应由帧数据算出，不是写死的数字
+    func testEatDurationDerivedFromFrameData() {
+        // 4 帧 × 0.22s × 重复 4 轮
+        XCTAssertEqual(Interaction.Duration.eat, 0.22 * 4 * 4, accuracy: 0.001)
+    }
+
+    /// **台词延迟不能超过动画时长** —— 否则台词在动画结束后才冒出来，
+    /// 显得反应迟钝。也不能太短（原来喂食是 1.6s vs 动画 3.52s，
+    /// 台词在演到一半时就出现了）。
+    func testSayDelaysFallWithinAnimation() {
+        XCTAssertLessThan(Interaction.Duration.sayAfterEat,
+                          Interaction.Duration.eat,
+                          "台词不该在咀嚼结束后才说")
+        XCTAssertGreaterThan(Interaction.Duration.sayAfterEat,
+                             Interaction.Duration.eat * 0.5,
+                             "台词不该在咀嚼刚开始就说")
+    }
+}

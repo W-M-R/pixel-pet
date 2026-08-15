@@ -295,7 +295,8 @@ extension PetState {
             (.bored,  mood(at: now)),
             (.dirty,  hygiene(at: now))
         ]
-        if let worst = candidates.min(by: { $0.1 < $1.1 }), worst.1 < 0.35 {
+        if let worst = candidates.min(by: { $0.1 < $1.1 }),
+           worst.1 < StateThreshold.hudAlert {
             return worst.0
         }
         if isDrowsy(at: now) { return .sleepy }
