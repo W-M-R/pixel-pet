@@ -89,8 +89,8 @@ final class EconomyTests: XCTestCase {
         let rule = CheckInReward()
         XCTAssertNil(rule.evaluate(ctx(offlineHours: 1)), "间隔不足 5h 不发")
         XCTAssertNil(rule.evaluate(ctx(offlineHours: 4.9)))
-        XCTAssertEqual(rule.evaluate(ctx(offlineHours: 5))?.coins, 1)
-        XCTAssertEqual(rule.evaluate(ctx(offlineHours: 100))?.coins, 1, "只发 1 枚，不累积")
+        XCTAssertEqual(rule.evaluate(ctx(offlineHours: 5))?.coins, 10)
+        XCTAssertEqual(rule.evaluate(ctx(offlineHours: 100))?.coins, 10, "只发一份，不累积")
     }
 
     // MARK: - 看家收益
@@ -101,7 +101,7 @@ final class EconomyTests: XCTestCase {
         let c10 = rule.evaluate(realCtx(offlineHours: 10))?.coins ?? 0
         let c20 = rule.evaluate(realCtx(offlineHours: 20))?.coins ?? 0
         XCTAssertLessThanOrEqual(c20, c10, "超过上限后收益不增反降")
-        XCTAssertLessThan(c10, 15, "10h 收益应在 10 枚上下，不该暴富")
+        XCTAssertLessThan(c10, 150, "10h 收益应在 100 枚上下，不该暴富")
     }
 
     /// 收益在 10h（时长上限）达峰后下降
@@ -137,19 +137,19 @@ final class EconomyTests: XCTestCase {
         let income = simulateDay(offlineSegments: [8, 5, 5, 6])
         let cost = FoodItem.kibble.price * 4
         let net = income - Double(cost)
-        XCTAssertEqual(net, 0.5, accuracy: 3.0, "4 次/天结余应接近 0")
+        XCTAssertEqual(net, 6, accuracy: 25, "4 次/天结余应接近 0")
     }
 
     func testBalance2TimesPerDay() {
         let income = simulateDay(offlineSegments: [12, 12])
         let net = income - Double(FoodItem.kibble.price * 2)
-        XCTAssertEqual(net, 5.6, accuracy: 3.0)
+        XCTAssertEqual(net, 56, accuracy: 25)
     }
 
     func testBalance1TimePerDay() {
         let income = simulateDay(offlineSegments: [24])
         let net = income - Double(FoodItem.kibble.price)
-        XCTAssertEqual(net, 1.2, accuracy: 3.0)
+        XCTAssertEqual(net, 12, accuracy: 25)
     }
 
     /// 只喂食不陪玩会倒亏 —— 这是"不能只喂饭"的设计意图

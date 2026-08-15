@@ -15,7 +15,7 @@ struct CheckInReward: RewardRule {
     let isOneTime = false
 
     static let minIntervalHours: Double = 5
-    static let coins = 1
+    static let coins = 10
 
     func evaluate(_ ctx: RewardContext) -> RewardOutcome? {
         guard ctx.offlineHours >= Self.minIntervalHours else { return nil }
@@ -38,7 +38,7 @@ struct OfflineCareReward: RewardRule {
     let nameKey = "reward.offline_care"
     let isOneTime = false
 
-    static let ratePerHour: Double = 0.9
+    static let ratePerHour: Double = 9.0
     static let maxHours: Double = 10
 
     /// 三维压缩区间。**宽度即权重。**
@@ -122,55 +122,55 @@ struct AchievementRule: RewardRule {
 
     /// 陪伴（5 条，380 枚）
     static let companion: [AchievementRule] = [
-        .init(id: "first_feed", nameKey: "achv.first_feed", coins: 10, group: .companion,
+        .init(id: "first_feed", nameKey: "achv.first_feed", coins: 100, group: .companion,
               condition: { p, _ in (p.totalFeedCount ?? 0) >= 1 }, progress: nil),
-        .streak(3, coins: 20), .streak(7, coins: 50),
-        .streak(15, coins: 100), .streak(30, coins: 200),
+        .streak(3, coins: 200), .streak(7, coins: 500),
+        .streak(15, coins: 1000), .streak(30, coins: 2000),
     ]
 
     /// 成长（4 条，445 枚）
     static let growth: [AchievementRule] = [
-        .init(id: "stage_growing", nameKey: "achv.stage_growing", coins: 15, group: .growth,
+        .init(id: "stage_growing", nameKey: "achv.stage_growing", coins: 150, group: .growth,
               condition: { p, _ in p.ageInDays >= PetStage.growing.minDays }, progress: nil),
-        .init(id: "stage_adult", nameKey: "achv.stage_adult", coins: 30, group: .growth,
+        .init(id: "stage_adult", nameKey: "achv.stage_adult", coins: 300, group: .growth,
               condition: { p, _ in p.ageInDays >= PetStage.adult.minDays }, progress: nil),
-        .init(id: "stage_elder", nameKey: "achv.stage_elder", coins: 100, group: .growth,
+        .init(id: "stage_elder", nameKey: "achv.stage_elder", coins: 1000, group: .growth,
               condition: { p, _ in p.ageInDays >= PetStage.elder.minDays }, progress: nil),
-        .init(id: "age_100", nameKey: "achv.age_100", coins: 300, group: .growth,
+        .init(id: "age_100", nameKey: "achv.age_100", coins: 3000, group: .growth,
               condition: { p, _ in p.ageInDays >= 100 },
               progress: { p, _ in (min(p.ageInDays, 100), 100) }),
     ]
 
     /// 照料（5 条，320 枚）
     static let care: [AchievementRule] = [
-        .counted("feed_50", key: "achv.feed_50", coins: 40, target: 50, group: .care,
+        .counted("feed_50", key: "achv.feed_50", coins: 400, target: 50, group: .care,
                  value: { p, _ in p.totalFeedCount ?? 0 }),
-        .counted("feed_200", key: "achv.feed_200", coins: 120, target: 200, group: .care,
+        .counted("feed_200", key: "achv.feed_200", coins: 1200, target: 200, group: .care,
                  value: { p, _ in p.totalFeedCount ?? 0 }),
-        .counted("play_30", key: "achv.play_30", coins: 30, target: 30, group: .care,
+        .counted("play_30", key: "achv.play_30", coins: 300, target: 30, group: .care,
                  value: { p, _ in p.totalPlayCount ?? 0 }),
-        .counted("clean_20", key: "achv.clean_20", coins: 30, target: 20, group: .care,
+        .counted("clean_20", key: "achv.clean_20", coins: 300, target: 20, group: .care,
                  value: { p, _ in p.totalCleanCount ?? 0 }),
-        .counted("clean_100", key: "achv.clean_100", coins: 100, target: 100, group: .care,
+        .counted("clean_100", key: "achv.clean_100", coins: 1000, target: 100, group: .care,
                  value: { p, _ in p.totalCleanCount ?? 0 }),
     ]
 
     /// 美食（3 条，120 枚）
     static let food: [AchievementRule] = [
-        .init(id: "food_can", nameKey: "achv.food_can", coins: 15, group: .food,
+        .init(id: "food_can", nameKey: "achv.food_can", coins: 150, group: .food,
               condition: { p, _ in (p.foodCounts?[FoodItem.can.id] ?? 0) >= 1 }, progress: nil),
-        .init(id: "food_fish", nameKey: "achv.food_fish", coins: 25, group: .food,
+        .init(id: "food_fish", nameKey: "achv.food_fish", coins: 250, group: .food,
               condition: { p, _ in (p.foodCounts?[FoodItem.driedFish.id] ?? 0) >= 1 },
               progress: nil),
-        .counted("food_fish_20", key: "achv.food_fish_20", coins: 80, target: 20, group: .food,
+        .counted("food_fish_20", key: "achv.food_fish_20", coins: 800, target: 20, group: .food,
                  value: { p, _ in p.foodCounts?[FoodItem.driedFish.id] ?? 0 }),
     ]
 
     /// 收藏（2 条，70 枚）
     static let collection: [AchievementRule] = [
-        .counted("breed_2", key: "achv.breed_2", coins: 30, target: 2, group: .collection,
+        .counted("breed_2", key: "achv.breed_2", coins: 300, target: 2, group: .collection,
                  value: { p, _ in p.triedBreeds?.count ?? 1 }),
-        .counted("color_4", key: "achv.color_4", coins: 40, target: 4, group: .collection,
+        .counted("color_4", key: "achv.color_4", coins: 400, target: 4, group: .collection,
                  value: { p, _ in p.triedColors?.count ?? 1 }),
     ]
 

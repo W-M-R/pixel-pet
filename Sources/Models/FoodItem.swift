@@ -36,17 +36,17 @@ struct FoodItem: Identifiable, Hashable {
     /// 日常主力。性价比最高（0.80 小时/枚）。
     static let kibble = FoodItem(
         id: "kibble", emoji: "🍚", nameKey: "food.kibble",
-        price: 7, satietyRestore: 0.70, moodBonus: 0, grantsBoost: false)
+        price: 70, satietyRestore: 0.70, moodBonus: 0, grantsBoost: false)
 
     static let can = FoodItem(
         id: "can", emoji: "🥫", nameKey: "food.can",
-        price: 14, satietyRestore: 1.0, moodBonus: 0.10, grantsBoost: false)
+        price: 140, satietyRestore: 1.0, moodBonus: 0.10, grantsBoost: false)
 
     /// 卖的是 buff 和心情，不是饱食效率。
     /// 刻意设计成「略微亏本」—— 让它是一种经营选择，而非最优解。
     static let driedFish = FoodItem(
         id: "dried_fish", emoji: "🐟", nameKey: "food.dried_fish",
-        price: 32, satietyRestore: 1.0, moodBonus: 0.25, grantsBoost: true)
+        price: 320, satietyRestore: 1.0, moodBonus: 0.25, grantsBoost: true)
 
     static let all: [FoodItem] = [.scraps, .kibble, .can, .driedFish]
 

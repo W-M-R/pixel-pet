@@ -22,8 +22,14 @@ struct PetWallet: Codable, Equatable {
     /// 已领取的一次性奖励 ID
     var claimedRewards: Set<String>
 
+    /// 启动资金。
+    ///
+    /// 不给的话新玩家第一顿只能吃剩饭（30% 饱食），第一印象是「穷」。
+    /// 100 枚够买一份普通粮 + 攒一点，让第一次喂食就有得选。
+    static let initialCoins = 100
+
     init(now: Date = Date()) {
-        coins = 0
+        coins = Self.initialCoins
         lastCollectedAt = now
         boostUntil = nil
         totalEarned = 0
