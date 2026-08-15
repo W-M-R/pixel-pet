@@ -30,14 +30,19 @@ final class PetTalkCoordinator {
     /// 台词最短间隔。防止连续戳宠物时气泡刷屏。
     private let cooldown: TimeInterval = 4
 
-    /// 当前生效语言。AI 只支持英文，读的是 **app 内选择的语言**，
-    /// 所以用户在设置里把 app 切成英文就能用 AI，不必改系统语言。
+    /// 当前生效语言。读的是 **app 内选择的语言**而非系统语言，
+    /// 这样用户在设置里切语言，台词语种立刻跟着变。
     private var languageCode: String {
         LocalizationManager.shared.effectiveLanguageCode
     }
 
     var aiAvailability: PetChatEngine.Availability {
-        PetChatEngine.availability(languageCode: languageCode)
+        PetChatEngine.availability()
+    }
+
+    /// 当前语言下模型质量是否可靠。仅用于 UI 提示，不拦截功能。
+    var aiIsHighQualityLanguage: Bool {
+        PetChatEngine.isHighQuality(language: languageCode)
     }
 
     /// 开关状态。关闭时顺便卸载模型，把内存还回去。
@@ -79,10 +84,10 @@ final class PetTalkCoordinator {
         // 1) 预写台词立刻显示
         currentLine = PetLines.line(for: context, absentDays: absentDays)
 
-        // 2) 英文环境才启动 AI
+        // 2) 开启且模型可用就启动 AI（不限语言）
         generationTask?.cancel()
         let lang = languageCode
-        guard case .ready = PetChatEngine.availability(languageCode: lang) else { return true }
+        guard case .ready = PetChatEngine.availability() else { return true }
 
         isGenerating = true
         generationTask = Task { [weak self] in

@@ -12,6 +12,7 @@ struct PetSettingsView: View {
     @State private var draftName: String = ""
     @State private var notifyOn: Bool = PetNotifications.isEnabled
     @State private var notifyDenied = false
+    @State private var aiOn: Bool = PetChatEngine.isEnabled
 
     private var pet: PetState { store.pet }
 
@@ -27,6 +28,7 @@ struct PetSettingsView: View {
                 growthSection
                 statsSection
                 notificationSection
+                aiSection
 
                 Section {
                     NavigationLink {
@@ -175,6 +177,38 @@ struct PetSettingsView: View {
         LabeledContent(L(key)) {
             Text(verbatim: "\(value) \(L(unit))")
                 .font(.system(.body, design: .monospaced))
+        }
+    }
+
+    // MARK: - AI 台词
+
+    /// **默认关闭。** 两个代价都写在 footer 里让用户自己权衡：
+    /// 内存约 1.4 GB（实测，CoreML 把量化权重解压成 fp16 常驻，改不了），
+    /// 以及中文质量不如英文（350M 规模的局限）。
+    ///
+    /// 不按语言拦截 —— 用户既然主动开了，就不替他做决定。
+    private var aiSection: some View {
+        Section {
+            Toggle(L("settings.ai"), isOn: Binding(
+                get: { aiOn },
+                set: { on in
+                    aiOn = on
+                    talk.aiEnabled = on
+                }))
+            if aiOn, !talk.aiIsHighQualityLanguage {
+                Text(verbatim: L("settings.ai.quality_warning"))
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            }
+            if aiOn, case .modelMissing = talk.aiAvailability {
+                Text(verbatim: L("settings.ai.model_missing"))
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+        } header: {
+            Text(verbatim: L("settings.ai.header"))
+        } footer: {
+            Text(verbatim: L("settings.ai.footer"))
         }
     }
 

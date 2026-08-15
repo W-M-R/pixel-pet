@@ -19,6 +19,13 @@ settings:
     MARKETING_VERSION: "0.1"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_EMIT_LOC_STRINGS: YES
+  configs:
+    # 调试面板（时间快进 / 跳阶段 / 重置存档）只在 Debug 编译进去。
+    # Release 产物里连符号都不存在，比运行时隐藏更彻底。
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+    Release:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: ""
 
 targets:
   PixelPetTests:

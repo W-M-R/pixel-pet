@@ -260,6 +260,7 @@ final class PetStore {
 
     /// 调试用：把时间戳往前推，模拟放置一段时间后的状态。
     /// 这是验证「读时算」是否正确的最快方式。
+    #if DEBUG
     func debugAge(by seconds: TimeInterval) {
         pet.lastFedAt = pet.lastFedAt.addingTimeInterval(-seconds)
         pet.lastPlayedAt = pet.lastPlayedAt.addingTimeInterval(-seconds)
@@ -275,6 +276,7 @@ final class PetStore {
         persist()
         refresh()
     }
+    #endif
 
     func resetAll() {
         wallet = PetWallet()

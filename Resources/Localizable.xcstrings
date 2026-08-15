@@ -1681,6 +1681,91 @@
         }
       }
     },
+    "settings.ai": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI dialogue"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 台词"
+          }
+        }
+      }
+    },
+    "settings.ai.footer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When on, your pet's lines are generated on-device, fully offline. Costs about 1.4 GB of memory, which makes the app more likely to be unloaded in the background."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启后宠物的台词由设备端模型生成，完全离线。代价是约 1.4 GB 内存占用，会让 app 挂后台时更容易被系统回收。"
+          }
+        }
+      }
+    },
+    "settings.ai.header": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI"
+          }
+        }
+      }
+    },
+    "settings.ai.model_missing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model not bundled in this build."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此版本未打包模型。"
+          }
+        }
+      }
+    },
+    "settings.ai.quality_warning": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quality in this language is less reliable than English; lines may read oddly."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前语言的生成质量不如英文，偶尔会出现不通顺的句子。"
+          }
+        }
+      }
+    },
     "settings.breed": {
       "localizations": {
         "en": {

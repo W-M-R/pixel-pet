@@ -8,7 +8,9 @@ struct PetHomeView: View {
     @State private var scene = PetScene()
     @State private var showSettings = false
     @State private var showFood = false
+    #if DEBUG
     @State private var showDebug = false
+    #endif
     @Environment(\.scenePhase) private var scenePhase
 
     private var now: Date { store.tick }
@@ -103,6 +105,7 @@ struct PetHomeView: View {
         .sheet(isPresented: $showSettings) {
             PetSettingsView(store: store, talk: talk)
         }
+        #if DEBUG
         .sheet(isPresented: $showDebug) {
             DebugPanel(store: store, talk: talk) {
                 roomStore.reset()
@@ -110,6 +113,7 @@ struct PetHomeView: View {
                 scene.rebuildRoom()
             }
         }
+        #endif
         .preferredColorScheme(.dark)
     }
 
@@ -163,9 +167,12 @@ struct PetHomeView: View {
                         .font(.system(size: 15))
                         .foregroundStyle(.white.opacity(0.55))
                 }
-                // 长按进调试面板 —— 保留时间快进能力，但不占主界面
+                #if DEBUG
+                // 长按进调试面板 —— 保留时间快进能力，但不占主界面。
+                // Release 不编译，正式版没有这个入口。
                 .simultaneousGesture(LongPressGesture(minimumDuration: 0.6)
                     .onEnded { _ in showDebug = true })
+                #endif
             }
 
             HStack(spacing: 8) {
@@ -255,8 +262,12 @@ private struct ActionButton: View {
     }
 }
 
+#if DEBUG
+
 /// 调试面板。用来验证「时间戳驱动」是否正确——把时间往前推，
 /// 数值应该立刻跟着掉，而不需要 app 在后台跑任何东西。
+///
+/// **只在 Debug 编译。** 正式版没有入口，也没有这些符号。
 private struct DebugPanel: View {
     let store: PetStore
     let talk: PetTalkCoordinator
@@ -270,15 +281,6 @@ private struct DebugPanel: View {
             ?? m.selectedCode
     }
 
-    private var aiStatusText: String {
-        switch talk.aiAvailability {
-        case .ready:              return "状态：可用"
-        case .disabled:           return "状态：已关闭（使用预写台词）"
-        case .unsupportedLanguage:return "状态：当前语言不支持（模型中文质量不足）"
-        case .modelMissing:       return "状态：模型未打包"
-        case .loadFailed:         return "状态：模型加载失败"
-        }
-    }
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -341,21 +343,6 @@ private struct DebugPanel: View {
                         .font(.caption2)
                 }
 
-                Section {
-                    Toggle("AI 台词", isOn: Binding(
-                        get: { talk.aiEnabled },
-                        set: { talk.aiEnabled = $0 }))
-                    Text(verbatim: aiStatusText)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } header: {
-                    Text("AI")
-                } footer: {
-                    Text("开启后宠物的台词由设备端模型生成，完全离线。\n"
-                         + "代价是约 1.4 GB 内存占用，且目前只有英文质量可用。")
-                        .font(.caption2)
-                }
-
                 Section("素材授权") {
                     NavigationLink("Credits") { CreditsView() }
                 }
@@ -369,6 +356,8 @@ private struct DebugPanel: View {
         }
     }
 }
+
+#endif
 
 #Preview {
     PetHomeView()
