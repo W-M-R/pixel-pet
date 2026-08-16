@@ -6,7 +6,7 @@
 Core/           基础设施：本地化、设计 token（Pixel）
 Models/         值类型：状态、规则、配置表
 Scenes/         SpriteKit 场景（房间、宠物、气泡）
-Services/       有状态的协调者：存档、AI、通知
+Services/       有状态的协调者：存档、通知、台词调度
 Views/          SwiftUI 界面
 App/            组装
 ```
@@ -17,7 +17,7 @@ App/            组装
 Core → Models → {Scenes, Services} → Views → App
 ```
 
-`Models` 不依赖任何上层，所以能脱离 UI 测试 —— 148 个测试里绝大多数在这一层。
+`Models` 不依赖任何上层，所以能脱离 UI 测试 —— 145 个测试里绝大多数在这一层。
 
 ### 由脚本强制，不靠自觉
 
@@ -106,7 +106,7 @@ public，是全方案的一半成本、80% 的实际收益）。上面修循环�
 | `BubbleLayer` | 气泡，通过 `anchor` 闭包与宠物解耦 | 加一种气泡样式 |
 | `FloorPlane` | 2.5D 深度数学，纯值类型零 SpriteKit 依赖 | 改透视参数 |
 | `OpeningSequence` | 开场时序（顺序有硬约束） | 改延迟或消息编排 |
-| `PetLineContext` | 台词系统的输入，AI 与预写台词共用 | 加状态字段 |
+| `PetLineContext` | 台词系统的输入（纯语义，不含时间戳） | 加状态字段 |
 
 ## 刻意没做的抽象
 
@@ -158,14 +158,49 @@ public，是全方案的一半成本、80% 的实际收益）。上面修循环�
 洗澡 0.43s，比手调的 0.7/0.8 更急，观感变差。这些值是按「动作演到
 哪一拍最适合插话」调的，和总长不成固定比例。
 
+## 界面信息架构
+
+主页顶栏五个入口，各自一页：
+
+| 图标 | 页面 | 内容 |
+|---|---|---|
+| 钱堆 | `EarningsView` | 余额、今日额度、收支构成、流水 |
+| ♥ 需求 | （只读） | 当前最紧急的需求，不可点 |
+| ★ | `AchievementsView` | 19 条成就与进度 |
+| 店铺 | `ShopView` | 可购买品种 |
+| 爪印 | `PetsView` | 状态、起名、品种毛色、成长、陪伴记录 |
+| 齿轮 | `PetSettingsView` | **只有应用级偏好**：通知、语言、素材授权 |
+
+早期版本把这些全塞在设置页（七个 section），是「没想清楚放哪
+就先扔设置里」的产物：给宠物起名要先点齿轮，成就要先点齿轮
+再滚到底部 —— 而成就是主要金币来源。
+
+分界线：**关于这只宠物的都在宠物页，关于 app 的才在设置页。**
+由 `ViewStructureTests.testSettingsHasNoPetSpecificContent` 守着。
+
+### sheet 页必须自带 NavigationStack
+
+从 `NavigationLink` 目标改成 `.sheet` 时踩过：`ShopView` 和
+`AchievementsView` 依赖外层导航容器提供标题栏，作为 sheet 弹出后
+**整页没有标题栏也没有关闭按钮**，只能靠下滑手势。
+编译通过、测试全绿，只有真机点进去才发现。
+
+现在由 `ViewStructureTests.testSheetPresentedViewsAreDismissable`
+扫源码断言三件事：有 `dismiss`、有 `NavigationStack`、有「完成」按钮。
+
+这个测试自身也有个教训：第一版直接 `src.contains("NavigationStack")`，
+注入回归自测时没抓到 —— 因为注释里就写着「自带 NavigationStack」。
+剥掉注释再匹配才有效，和 `tools/check_layers.sh` 同一个坑。
+
 ## 测试策略
 
-148 个测试，分布：
+145 个测试，分布：
 
 | 文件 | 覆盖 |
 |---|---|
 | `EconomyTests` | 收益公式、额度、按量计价、平衡回归 |
 | `CoinLedgerTests` | **账目恒等式**、原因分类、分项汇总、流水、旧存档迁移 |
+| `ViewStructureTests` | 扫源码：sheet 页能否关掉、设置页不含宠物内容、无 AI 残留 |
 | `PetStoreTests` | 互动通路、存档、结算、开局与商店 |
 | `PetPersistenceTests` | 落盘、加载、内存与文件实现行为一致 |
 | `ConfigTests` | 阶段/品种参数、**品种支配检验**、Fixture 自测 |
@@ -196,11 +231,10 @@ public，是全方案的一半成本、80% 的实际收益）。上面修循环�
 
 - `PetScene`（818 行）—— 需要 `SKView` 生命周期
 - 4 个 View 文件 —— SwiftUI 视图
-- `PetChatEngine` —— CoreML actor
 - `PetState.ageInDays` 硬调 `Date()`，所以 `stage` 不可控 ——
   经济测试只能测幼年期
 
-前两条是 iOS 的固有成本。第四条如果要修，得给 `ageInDays` 加
+前两条是 iOS 的固有成本。最后一条如果要修，得给 `ageInDays` 加
 `at now:` 参数，会波及 `stage` 的所有调用方。
 
 ## 工具链

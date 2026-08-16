@@ -475,7 +475,7 @@ final class OnboardingStoreTests: StoreTestCase {
         w.debugSetCoins(20000)
         // 造一个付费品种来测（现有两个都是 starter，price=0）
         let paid = PetBreed(id: "test", nameKey: "x", colorCount: 4,
-                            footPadding: 4, englishNoun: "t", chineseNoun: "测",
+                            footPadding: 4,
                             price: 9000, traitKey: "x",
                             moodCycleHours: 18, hygieneCycleHours: 72,
                             goldMultiplier: 1.0)
@@ -490,7 +490,7 @@ final class OnboardingStoreTests: StoreTestCase {
         var w = PetWallet()
         w.debugSetCoins(500)
         let paid = PetBreed(id: "test", nameKey: "x", colorCount: 4,
-                            footPadding: 4, englishNoun: "t", chineseNoun: "测",
+                            footPadding: 4,
                             price: 9000, traitKey: "x",
                             moodCycleHours: 18, hygieneCycleHours: 72,
                             goldMultiplier: 1.0)

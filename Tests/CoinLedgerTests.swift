@@ -296,7 +296,6 @@ final class LedgerIntegrationTests: StoreTestCase {
         w.debugSetCoins(12000)
         let paid = PetBreed(id: "test_paid", nameKey: "breed.cat",
                             colorCount: 4, footPadding: 5,
-                            englishNoun: "cat", chineseNoun: "小猫",
                             price: 10000, traitKey: "trait.balanced",
                             moodCycleHours: 18, hygieneCycleHours: 72,
                             goldMultiplier: 1.0)

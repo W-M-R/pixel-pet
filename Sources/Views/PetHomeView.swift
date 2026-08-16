@@ -14,6 +14,8 @@ struct PetHomeView: View {
     @State private var showSettings = false
     @State private var showEarnings = false
     @State private var showPets = false
+    @State private var showShop = false
+    @State private var showAchievements = false
     @State private var showFood = false
     #if DEBUG
     @State private var showDebug = false
@@ -70,16 +72,6 @@ struct PetHomeView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.refresh() }
         }
-        .onReceive(NotificationCenter.default.publisher(
-            for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
-            talk.handleMemoryWarning()
-        }
-        .onChange(of: talk.currentLine) { _, line in
-            // AI 台词后到时替换气泡。实测模拟器 CPU-only 要 2-5s，
-            // 所以预写台词的气泡时长要够长（见 showSpeech 默认 duration），
-            // 否则 AI 结果到达时气泡已经消失了。
-            if let line { scene.showSpeech(line) }
-        }
         .onChange(of: store.tick) { _, _ in
             // 按自然作息决定睡不睡，与用户互动无关。
             // 曾经用「距上次玩耍的时间」判断，导致一摸就睡（见 PetState.isDrowsy）。
@@ -96,7 +88,7 @@ struct PetHomeView: View {
             }
         }
         .sheet(isPresented: $showSettings) {
-            PetSettingsView(store: store, talk: talk)
+            PetSettingsView(store: store)
         }
         .sheet(isPresented: $showEarnings) {
             EarningsView(store: store)
@@ -104,9 +96,15 @@ struct PetHomeView: View {
         .sheet(isPresented: $showPets) {
             PetsView(store: store)
         }
+        .sheet(isPresented: $showShop) {
+            ShopView(store: store)
+        }
+        .sheet(isPresented: $showAchievements) {
+            AchievementsView(store: store)
+        }
         #if DEBUG
         .sheet(isPresented: $showDebug) {
-            DebugPanel(store: store, talk: talk) {
+            DebugPanel(store: store) {
                 roomStore.reset()
                 scene.layout = roomStore.layout
                 scene.rebuildRoom()
@@ -135,7 +133,7 @@ struct PetHomeView: View {
                         stage: store.pet.stage)
     }
 
-    /// 触发说话。预写台词立刻出，AI 台词后到会自动替换。
+    /// 触发说话。
     private func say(_ trigger: PetLineContext.Trigger, delay: TimeInterval = 0) {
         let fire = {
             guard talk.speak(store.lineContext(trigger: trigger)) else { return }
@@ -203,7 +201,20 @@ struct PetHomeView: View {
                 PixelIconView(icon: .forNeed(store.pet.dominantNeed(at: now)),
                               size: Pixel.u(5))
 
-                // 宠物页 —— 状态详情 + 花名册 + 商店
+                // 成就 —— 之前埋在设置页底部（齿轮 → 滚到底），
+                // 而它是主要的金币来源（30 天内可得 7050 枚），该在主页。
+                Button { showAchievements = true } label: {
+                    PixelIconView(icon: .star, size: Pixel.u(5))
+                }
+                .buttonStyle(.plain)
+
+                // 商店
+                Button { showShop = true } label: {
+                    PixelIconView(icon: .shop, size: Pixel.u(5))
+                }
+                .buttonStyle(.plain)
+
+                // 宠物页 —— 状态、起名、品种毛色、成长、陪伴记录
                 Button { showPets = true } label: {
                     PixelIconView(icon: .paw, size: Pixel.u(5.5))
                 }

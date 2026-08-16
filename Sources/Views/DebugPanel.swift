@@ -8,7 +8,6 @@ import SwiftUI
 /// **只在 Debug 编译。** 正式版没有入口，也没有这些符号。
 struct DebugPanel: View {
     let store: PetStore
-    let talk: PetTalkCoordinator
     let onResetRoom: () -> Void
 
     /// 当前语言的显示名（母语名），跟随系统时显示"跟随系统"。

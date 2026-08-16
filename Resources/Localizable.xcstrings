@@ -2142,6 +2142,22 @@
         }
       }
     },
+    "pets.record": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Record"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "陪伴记录"
+          }
+        }
+      }
+    },
     "pets.roster": {
       "localizations": {
         "en": {
@@ -2270,135 +2286,18 @@
         }
       }
     },
-    "settings.age": {
+    "settings.coat": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Days together"
+            "value": "Coat"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "相伴天数"
-          }
-        }
-      }
-    },
-    "settings.age.value": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%d days"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%d 天"
-          }
-        }
-      }
-    },
-    "settings.ai": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "AI dialogue"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "AI 台词"
-          }
-        }
-      }
-    },
-    "settings.ai.footer": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "When on, your pet's lines are generated on-device, fully offline. Costs about 1.4 GB of memory, which makes the app more likely to be unloaded in the background."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "开启后宠物的台词由设备端模型生成，完全离线。代价是约 1.4 GB 内存占用，会让 app 挂后台时更容易被系统回收。"
-          }
-        }
-      }
-    },
-    "settings.ai.header": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "AI"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "AI"
-          }
-        }
-      }
-    },
-    "settings.ai.model_missing": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Model not bundled in this build."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "此版本未打包模型。"
-          }
-        }
-      }
-    },
-    "settings.ai.quality_warning": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Quality in this language is less reliable than English; lines may read oddly."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "当前语言的生成质量不如英文，偶尔会出现不通顺的句子。"
-          }
-        }
-      }
-    },
-    "settings.breed": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Breed"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "品种"
+            "value": "毛色"
           }
         }
       }
@@ -2436,22 +2335,6 @@
         }
       }
     },
-    "settings.growth.footer": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Your pet grows with the days you spend together: Baby → Young → Adult → Senior."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "宠物会随相伴天数长大：幼年 → 成长期 → 成年 → 老年。"
-          }
-        }
-      }
-    },
     "settings.language": {
       "localizations": {
         "en": {
@@ -2473,13 +2356,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Choose English to enable AI-generated lines (the on-device model currently supports English only)."
+            "value": "Applies immediately. Falls back to English if a language is missing."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "选择英文后可以使用 AI 台词功能（设备端模型目前只支持英文）。"
+            "value": "选择后立刻生效。缺少译文时回退到英文。"
           }
         }
       }
@@ -2596,22 +2479,6 @@
         }
       }
     },
-    "settings.stage": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Stage"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "当前阶段"
-          }
-        }
-      }
-    },
     "settings.stage.final": {
       "localizations": {
         "en": {
@@ -2640,22 +2507,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "再过 %d 天进入下一阶段"
-          }
-        }
-      }
-    },
-    "settings.stats": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Records"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "累积"
           }
         }
       }
@@ -3016,22 +2867,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "次"
-          }
-        }
-      }
-    },
-    "wallet.coins": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Coins"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "硬币"
           }
         }
       }

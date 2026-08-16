@@ -35,7 +35,7 @@ struct OpeningSequence {
         /// 要说的话。第一条立刻说，其余按 `secondMessageDelay` 间隔接续。
         ///
         /// 空数组表示「没有收益，该说日常问候」—— 调用方走台词系统，
-        /// 因为问候语要经过 AI/预写台词的选择逻辑，不是固定文案。
+        /// 因为问候语要经过台词系统的选择逻辑，不是固定文案。
         let messages: [String]
 
         var hasSettlementNews: Bool { !messages.isEmpty }
@@ -62,7 +62,7 @@ struct OpeningSequence {
     /// - Parameters:
     ///   - plan: `plan(store:)` 的产出
     ///   - speak: 怎么说（通常是 `scene.showSpeech`）
-    ///   - fallback: 没有收益时说什么（走台词系统，可能是 AI 生成）
+    ///   - fallback: 没有收益时说什么（走台词系统）
     static func announce(_ plan: Plan,
                          speak: @escaping (String) -> Void,
                          fallback: @escaping () -> Void) {

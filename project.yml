@@ -57,12 +57,6 @@ targets:
       - path: Assets
         buildPhase: resources
         optional: true
-      # LFM2-350M CoreML 模型 (170MB) + tokenizer。
-      # .mlpackage 会被 Xcode 自动编译成 .mlmodelc。
-      # 模型不入 git（见 .gitignore），由 tools/convert/to_coreml.py 生成。
-      - path: Models
-        buildPhase: resources
-        optional: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.wmr.pixelpet

@@ -62,6 +62,9 @@ PAL = {
     # 爪印（宠物入口）—— 取猫毛的橙褐，和 LPC 素材同色系
     'p': (170, 112, 70, 255),
     'P': (214, 156, 106, 255),
+    # 商店（雨棚条纹）
+    't': (176, 74, 68, 255),      # 棚红
+    'T': (226, 118, 108, 255),
 }
 
 # 每个图标 16 行 × 16 列
@@ -291,6 +294,28 @@ ICONS['paw'] = [
     "................",
 ]
 
+# 商店（店铺雨棚 + 门）。
+# 不复用 `coins` —— 那个已经是「收支明细」入口，
+# 同一个图标指向两个地方会让人点错。
+ICONS['shop'] = [
+    "................",
+    "................",
+    "..KKKKKKKKKKKK..",
+    ".KTTKttKTTKttKTK",
+    ".KTTKttKTTKttKTK",
+    ".KKKKKKKKKKKKKK.",
+    ".KwwwwwwwwwwwwK.",
+    ".KwKKKKKKKKKKwK.",
+    ".KwKWWWWWWWWKwK.",
+    ".KwKWKKKKKKWKwK.",
+    ".KwKWKwwwwKWKwK.",
+    ".KwKWKwwwwKWKwK.",
+    ".KwKWKwwwwKWKwK.",
+    ".KwKWKwwwwKWKwK.",
+    ".KKKKKKKKKKKKKK.",
+    "................",
+]
+
 ICONS['star'] = [
     "................",
     "................",
@@ -333,7 +358,7 @@ ICONS['sleep'] = [
 # ⚠️ 只能**追加到末尾** —— PixelIcon 的 case 用的是这里的索引，
 # 中间插入会让所有后续图标错位。
 ORDER = ['meat', 'ball', 'bath', 'coin', 'scraps', 'kibble',
-         'can', 'fish', 'heart', 'star', 'sleep', 'coins', 'paw']
+         'can', 'fish', 'heart', 'star', 'sleep', 'coins', 'paw', 'shop']
 
 
 def build():

@@ -133,7 +133,7 @@ enum Fixture {
                            ageInDays: Int = 1,
                            trigger: PetLineContext.Trigger = .appeared)
     -> PetLineContext {
-        PetLineContext(name: "T", species: "cat", chineseSpecies: "小猫",
+        PetLineContext(name: "T",
                        satiety: satiety, mood: mood, hygiene: hygiene,
                        isDrowsy: isDrowsy, ageInDays: ageInDays,
                        trigger: trigger)

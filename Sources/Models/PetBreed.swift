@@ -130,12 +130,6 @@ struct PetBreed: Identifiable, Hashable, Codable, Sendable {
     /// 一直偏了 2 源像素（8pt）**。
     let footPadding: CGFloat
 
-    /// AI 台词里描述物种用的英文词
-    let englishNoun: String
-    /// AI 台词里描述物种用的中文词。
-    /// 单独存而不是拿 nameKey 查表 —— prompt 要的是「小猫」这种口语称呼，
-    /// 而 nameKey 的译文是「猫」这种正式名。
-    let chineseNoun: String
 
     // MARK: - 属性差异
 
@@ -190,7 +184,6 @@ struct PetBreed: Identifiable, Hashable, Codable, Sendable {
     static let cat = PetBreed(
         id: "cat", nameKey: "breed.cat",
         colorCount: 4, footPadding: 5,
-        englishNoun: "cat", chineseNoun: "小猫",
         price: 0, traitKey: "trait.balanced",
         moodCycleHours: 18, hygieneCycleHours: 72, goldMultiplier: 1.00)
 
@@ -209,7 +202,6 @@ struct PetBreed: Identifiable, Hashable, Codable, Sendable {
     static let dog = PetBreed(
         id: "dog", nameKey: "breed.dog",
         colorCount: 4, footPadding: 3,
-        englishNoun: "dog", chineseNoun: "小狗",
         price: 0, traitKey: "trait.clingy",
         moodCycleHours: 14, hygieneCycleHours: 72, goldMultiplier: 1.10)
 

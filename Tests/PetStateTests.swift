@@ -145,26 +145,7 @@ final class StateThresholdTests: XCTestCase {
     /// **中英文 prompt 必须描述出同样的状态。**
     ///
     /// 这是集中阈值的核心目的 —— 扫一遍状态空间，
-    /// 确认两种语言的「饿/无聊/脏」判断完全一致。
-    func testPromptDescriptionsAgreeAcrossLanguages() {
-        for v in stride(from: 0.0, through: 1.0, by: 0.05) {
-            let ctx = Fixture.lineContext(satiety: v, mood: v, hygiene: v)
 
-            let zh = ctx.chineseStateDescription
-            let en = ctx.englishStateDescription
-
-            XCTAssertEqual(zh.contains("非常饿"), en.contains("very hungry"),
-                           "satiety=\(v) 时中英文的「很饿」判断不一致")
-            XCTAssertEqual(zh.contains("有点饿"), en.contains("a bit hungry"),
-                           "satiety=\(v) 时中英文的「有点饿」判断不一致")
-            XCTAssertEqual(zh.contains("无聊"), en.contains("bored"),
-                           "mood=\(v) 时中英文的「无聊」判断不一致")
-            XCTAssertEqual(zh.contains("很开心"), en.contains("happy"),
-                           "mood=\(v) 时中英文的「开心」判断不一致")
-            XCTAssertEqual(zh.contains("脏"), en.contains("dirty"),
-                           "hygiene=\(v) 时中英文的「脏」判断不一致")
-        }
-    }
 
     /// HUD 报警线要比台词的「一般」档宽松 ——
     /// 状态栏一直报警会让人焦虑，台词是低频触发可以更严

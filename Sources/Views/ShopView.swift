@@ -15,34 +15,47 @@ struct ShopView: View {
     @State private var toast: String?
 
     var body: some View {
-        ZStack {
-            Pixel.panel.color.ignoresSafeArea()
+        // 自带 NavigationStack —— 它现在总是以 sheet 出现（主页商店图标、
+        // 宠物页「收养更多」），没有外层导航容器就没有标题栏，
+        // 也就没有任何办法关掉这一页。
+        NavigationStack {
+            ZStack {
+                Pixel.panel.color.ignoresSafeArea()
 
-            ScrollView {
-                VStack(spacing: Pixel.u(3)) {
-                    header
+                ScrollView {
+                    VStack(spacing: Pixel.u(3)) {
+                        header
 
-                    if PetBreed.purchasable.isEmpty {
-                        emptyState
-                    } else {
-                        ForEach(PetBreed.purchasable) { breed in
-                            row(breed)
+                        if PetBreed.purchasable.isEmpty {
+                            emptyState
+                        } else {
+                            ForEach(PetBreed.purchasable) { breed in
+                                row(breed)
+                            }
+                        }
+
+                        if let toast {
+                            Text(verbatim: toast)
+                                .font(Pixel.mono(Pixel.labelSize))
+                                .foregroundStyle(Pixel.warn.color)
+                                .transition(.opacity)
                         }
                     }
-
-                    if let toast {
-                        Text(verbatim: toast)
-                            .font(Pixel.mono(Pixel.labelSize))
-                            .foregroundStyle(Pixel.warn.color)
-                            .transition(.opacity)
-                    }
+                    .padding(Pixel.u(4))
                 }
-                .padding(Pixel.u(4))
+            }
+            .navigationTitle(L("shop.title"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Pixel.panelDark.color, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L("common.done")) { dismiss() }
+                        .font(Pixel.mono(Pixel.bodySize, .semibold))
+                        .foregroundStyle(Pixel.coin.color)
+                }
             }
         }
-        .navigationTitle(L("shop.title"))
-        .toolbarBackground(Pixel.panelDark.color, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
     }
 
     private var header: some View {

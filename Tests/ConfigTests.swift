@@ -108,8 +108,6 @@ final class PetBreedGeometryTests: XCTestCase {
     /// 中英文物种称呼都要有 —— 原来中文是硬编码三元，加品种会显示错
     func testEveryBreedHasBothNouns() {
         for b in PetBreed.all {
-            XCTAssertFalse(b.englishNoun.isEmpty)
-            XCTAssertFalse(b.chineseNoun.isEmpty)
         }
     }
 }
@@ -308,8 +306,7 @@ final class BreedBalanceTests: XCTestCase {
         let base = PetBreed.cat
         let variant = PetBreed(
             id: "variant", nameKey: base.nameKey, colorCount: base.colorCount,
-            footPadding: base.footPadding, englishNoun: base.englishNoun,
-            chineseNoun: base.chineseNoun, price: base.price,
+            footPadding: base.footPadding, price: base.price,
             traitKey: base.traitKey,
             moodCycleHours: base.moodCycleHours,
             hygieneCycleHours: 96,          // 只改这个
@@ -320,5 +317,98 @@ final class BreedBalanceTests: XCTestCase {
                            netDaily(breed: variant, stage: .adult, feedsPerDay: n),
                            "清洁周期不该影响收益")
         }
+    }
+}
+
+/// 界面结构的静态检查。
+///
+/// 这类"不看运行时、只扫源码"的测试很少写，但这次值得：
+/// 我把 `ShopView` / `AchievementsView` 从 NavigationLink 目标改成 sheet 时，
+/// 它们没有自己的 `NavigationStack` —— 结果**整页没有标题栏也没法关掉**。
+/// 编译能过、测试全绿，只有真机点进去才发现。
+final class ViewStructureTests: XCTestCase {
+
+    /// 剥掉注释的源码。
+    ///
+    /// **必须剥注释再匹配。** 第一版 `testSheetPresentedViewsAreDismissable`
+    /// 直接 `src.contains("NavigationStack")`，我注入回归自测时它没抓到 ——
+    /// 因为那行注释里就写着「自带 NavigationStack」，字符串照样命中。
+    /// 讽刺的是 `tools/check_layers.sh` 早就踩过同一个坑并剥了注释。
+    private func code(_ name: String) throws -> String {
+        try source(name).split(separator: "\n").map { line -> String in
+            guard let i = line.range(of: "//") else { return String(line) }
+            return String(line[line.startIndex..<i.lowerBound])
+        }.joined(separator: "\n")
+    }
+
+    private func source(_ name: String) throws -> String {
+        // 从测试 bundle 回溯到源码目录。
+        // #filePath 指向本文件，Tests 与 Sources 同级。
+        let here = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()      // Tests/
+            .deletingLastPathComponent()      // 项目根
+        let url = here.appendingPathComponent("Sources/Views/\(name).swift")
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    /// 以 sheet 形式出现的页面必须能关掉。
+    ///
+    /// 判据：有 `dismiss` 环境变量 + 有 `NavigationStack`（提供标题栏容器）。
+    /// 缺任何一个，用户就会卡在那一页 —— 除了下滑手势没有出路，
+    /// 而 sheet 的下滑并不总是明显。
+    func testSheetPresentedViewsAreDismissable() throws {
+        // 这五个都由 PetHomeView / PetsView 以 .sheet 弹出
+        for name in ["ShopView", "AchievementsView", "PetsView",
+                     "EarningsView", "PetSettingsView"] {
+            let src = try code(name)
+            XCTAssertTrue(src.contains("Environment(\\.dismiss)"),
+                          "\(name) 是 sheet，但没有 dismiss —— 关不掉")
+            XCTAssertTrue(src.contains("NavigationStack"),
+                          "\(name) 是 sheet，但没有 NavigationStack —— 没有标题栏放关闭按钮")
+            XCTAssertTrue(src.contains("common.done"),
+                          "\(name) 缺「完成」按钮")
+        }
+    }
+
+    /// 设置页只该有应用级偏好。
+    ///
+    /// 宠物相关的东西已经全部搬到宠物页 —— 这条断言防止以后又
+    /// 「没想清楚放哪就先扔设置里」。
+    func testSettingsHasNoPetSpecificContent() throws {
+        let src = try code("PetSettingsView")
+        for banned in ["BreedPortrait", "CoatPicker", "stageProgress",
+                       "totalFeedCount", "store.rename"] {
+            XCTAssertFalse(src.contains(banned),
+                           "设置页出现了宠物相关内容 \(banned) —— 该放宠物页")
+        }
+    }
+
+    /// AI 台词功能已整个移除，不该有残留引用。
+    func testNoAIReferencesRemain() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let sources = root.appendingPathComponent("Sources")
+        let files = FileManager.default.enumerator(at: sources,
+                                                   includingPropertiesForKeys: nil)!
+        var offenders: [String] = []
+        for case let url as URL in files where url.pathExtension == "swift" {
+            let src = try String(contentsOf: url, encoding: .utf8)
+            // **剥掉注释再匹配。** 注释里的「曾经有过 AI，为什么删」
+            // 是有意保留的历史说明 —— 那是这个项目记录决策的方式，
+            // 不该被当成残留。只有真的代码引用才算。
+            let code = src.split(separator: "\n")
+                .map { line -> String in
+                    guard let i = line.range(of: "//") else { return String(line) }
+                    return String(line[line.startIndex..<i.lowerBound])
+                }
+                .joined(separator: "\n")
+            for sym in ["PetChatEngine", "BPETokenizer", "aiEnabled",
+                        "englishStateDescription", "chineseStateDescription"] {
+                if code.contains(sym) {
+                    offenders.append("\(url.lastPathComponent): \(sym)")
+                }
+            }
+        }
+        XCTAssertTrue(offenders.isEmpty, "AI 残留：\(offenders)")
     }
 }

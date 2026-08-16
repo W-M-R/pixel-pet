@@ -146,8 +146,6 @@ final class PetStore {
             name: pet.name.isEmpty
                 ? L(pet.breed.nameKey)
                 : pet.name,
-            species: pet.breed.englishNoun,
-            chineseSpecies: pet.breed.chineseNoun,
             satiety: pet.satiety(at: now),
             mood: pet.mood(at: now),
             hygiene: pet.hygiene(at: now),

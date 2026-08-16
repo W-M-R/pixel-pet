@@ -2,36 +2,53 @@ import SwiftUI
 
 /// 成就页。
 ///
-/// 独立页面而非塞进设置 —— 19 条会让设置页太长。
+/// 从主页顶栏的星星进来。曾经埋在设置页底部（齿轮 → 滚到最下），
+/// 而它是主要的金币来源（30 天内可得 7050 枚，见 docs/07-shop.md），
+/// 藏那么深不合理。
+///
 /// 未达成的显示进度条，比单纯的"未完成"更有推动力。
 struct AchievementsView: View {
     let store: PetStore
+
+    @Environment(\.dismiss) private var dismiss
 
     private var claimedCount: Int {
         AchievementRule.all.filter { store.isClaimed($0) }.count
     }
 
     var body: some View {
-        ZStack {
-            Pixel.panel.color.ignoresSafeArea()
+        // 自带 NavigationStack —— 它现在是 sheet 而不是 NavigationLink 的目标，
+        // 没有外层导航容器就没有标题栏，也没法关掉。
+        NavigationStack {
+            ZStack {
+                Pixel.panel.color.ignoresSafeArea()
 
-            ScrollView {
-                VStack(spacing: Pixel.u(3)) {
-                    summary
+                ScrollView {
+                    VStack(spacing: Pixel.u(3)) {
+                        summary
 
-                    ForEach(AchievementRule.Group.allCases, id: \.self) { group in
-                        let items = AchievementRule.all.filter { $0.group == group }
-                        if !items.isEmpty {
-                            section(title: L(group.nameKey), items: items)
+                        ForEach(AchievementRule.Group.allCases, id: \.self) { group in
+                            let items = AchievementRule.all.filter { $0.group == group }
+                            if !items.isEmpty {
+                                section(title: L(group.nameKey), items: items)
+                            }
                         }
                     }
+                    .padding(Pixel.u(3))
                 }
-                .padding(Pixel.u(3))
+            }
+            .navigationTitle(L("achv.title"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Pixel.panelDark.color, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L("common.done")) { dismiss() }
+                        .font(Pixel.mono(Pixel.bodySize, .semibold))
+                        .foregroundStyle(Pixel.coin.color)
+                }
             }
         }
-        .navigationTitle(L("achv.title"))
-        .toolbarBackground(Pixel.panelDark.color, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
     }
 
     private var summary: some View {
