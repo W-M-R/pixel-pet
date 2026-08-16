@@ -689,22 +689,6 @@
         }
       }
     },
-    "credits.title": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Credits"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "素材授权"
-          }
-        }
-      }
-    },
     "earn.cap_full": {
       "localizations": {
         "en": {

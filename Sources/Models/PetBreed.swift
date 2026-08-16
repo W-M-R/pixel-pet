@@ -104,31 +104,34 @@ enum PetStage: String, Codable, CaseIterable, Sendable {
 
 /// 宠物品种。
 ///
-/// 抽象成一个可注册的表，加新宠物只需：
-/// 1. 把 `<id>.png`（LPC 布局：16 列 × 8 行，32×32 格）放进 Assets/pets/
+/// 抽象成一个可注册的表。加新宠物：
+/// 1. 把 `<id>.png` 放进 `Assets/pets/`
 /// 2. 跑 `python3 tools/make_stages.py --pets <id>` 生成阶段帧
-/// 3. 在 `PetBreed.all` 里加一条
-/// 4. 补 `breed.<id>` 的本地化文案
+/// 3. 跑 `python3 tools/make_sleep.py`（睡姿要手绘点阵，见该脚本注释）
+/// 4. 在 `PetBreed.all` 里加一条，含 `layout`
+/// 5. 补 `breed.<id>` 与 `trait.<x>` 本地化
+/// 6. `tools/econ_report.py` 的 `BREED` 表加一条（配平报告要用）
+/// 7. `Tests/ConfigTests` 的 `all.count` 断言 +1
 ///
-/// 不需要改渲染代码。
+/// **布局不同的动物也不用改渲染代码** —— 帧尺寸、毛色数、走路帧序、
+/// 行语义都在 `layout` 里（见 `PetSheetLayout`）。
+/// 曾经这些是 `PetSpriteSheet` 的全局常量，那时这条注释只在
+/// 「新素材严格照抄 LPC 布局」时才成立。
 struct PetBreed: Identifiable, Hashable, Codable, Sendable {
     /// 同时是 Assets/pets/ 下的文件名
     let id: String
     /// 本地化 key
     let nameKey: String
-    /// 该 sheet 有几种毛色（LPC 标准是 4）
-    let colorCount: Int
-    /// 侧视帧里内容底边到格子底边的空白行数（源像素）。
-    ///
-    /// 决定影子、食盆、气泡挂在哪 —— 写死一个值的话，
-    /// 轮廓不同的品种会出现「影子和脚脱开」。
-    ///
-    /// 实测（解码 PNG 逐行扫 alpha，r0c0 侧视帧）：
-    ///   cat 内容底边 y=26 → 31-26 = 5
-    ///   dog 内容底边 y=28 → 31-28 = 3
-    /// 原来 `PetScene` 硬编码 5（按猫测的），所以**狗的影子和食盆
-    /// 一直偏了 2 源像素（8pt）**。
-    let footPadding: CGFloat
+    /// 精灵表布局。帧尺寸、毛色数、走路帧序、行语义、footPadding 都在这里。
+    let layout: PetSheetLayout
+
+    /// 毛色数量。转发到 `layout` —— 曾经这里有独立字段，
+    /// 和 `PetSpriteSheet` 的全局 `colorCount` 双轨，
+    /// 2 色品种会让 UI 显示 2 格但渲染按 4 色算列偏移。
+    var colorCount: Int { layout.colorCount }
+
+    /// 侧视帧内容底边到格底的空白（源像素）。转发到 `layout`。
+    var footPadding: CGFloat { layout.footPadding }
 
 
     // MARK: - 属性差异
@@ -183,7 +186,8 @@ struct PetBreed: Identifiable, Hashable, Codable, Sendable {
     /// 猫：均衡型，开局可选
     static let cat = PetBreed(
         id: "cat", nameKey: "breed.cat",
-        colorCount: 4, footPadding: 5,
+        layout: .lpc(footPadding: 5),      // 实测内容底边 y=26 → 31-26
+
         price: 0, traitKey: "trait.balanced",
         moodCycleHours: 18, hygieneCycleHours: 72, goldMultiplier: 1.00)
 
@@ -201,7 +205,9 @@ struct PetBreed: Identifiable, Hashable, Codable, Sendable {
     /// 由 `ConfigTests.testNoBreedDominatesAnother` 守着。
     static let dog = PetBreed(
         id: "dog", nameKey: "breed.dog",
-        colorCount: 4, footPadding: 3,
+        layout: .lpc(footPadding: 3),      // 实测 y=28 → 31-28。
+                                           // 原来硬编码 5，狗影子偏 8pt
+
         price: 0, traitKey: "trait.clingy",
         moodCycleHours: 14, hygieneCycleHours: 72, goldMultiplier: 1.10)
 

@@ -111,12 +111,13 @@ final class PetStateTests: XCTestCase {
     }
 
     func testFrameGeometryConstantsMatchAsset() {
-        // 食盆/影子/气泡的位置都依赖这两个常量。
+        // 食盆/影子/气泡的位置都依赖这些值。
         // 曾经硬编码 -24pt，导致食盆落在宠物头上。
-        XCTAssertEqual(PetSpriteSheet.frameSize.width, 32)
-        XCTAssertEqual(PetSpriteSheet.frameSize.height, 32)
-        XCTAssertEqual(PetSpriteSheet.columnsPerColor, 4)
-        XCTAssertEqual(PetSpriteSheet.colorCount, 4)
+        // 布局现在 per-breed（PetSheetLayout），不再是全局常量。
+        let l = PetBreed.cat.layout
+        XCTAssertEqual(l.cell, 32)
+        XCTAssertEqual(l.columnsPerColor, 4)
+        XCTAssertEqual(l.colorCount, 4)
     }
 }
 

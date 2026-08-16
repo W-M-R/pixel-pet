@@ -474,8 +474,8 @@ final class OnboardingStoreTests: StoreTestCase {
         var w = PetWallet()
         w.debugSetCoins(20000)
         // 造一个付费品种来测（现有两个都是 starter，price=0）
-        let paid = PetBreed(id: "test", nameKey: "x", colorCount: 4,
-                            footPadding: 4,
+        let paid = PetBreed(id: "test", nameKey: "x",
+                            layout: .lpc(footPadding: 4),
                             price: 9000, traitKey: "x",
                             moodCycleHours: 18, hygieneCycleHours: 72,
                             goldMultiplier: 1.0)
@@ -489,8 +489,8 @@ final class OnboardingStoreTests: StoreTestCase {
     func testPurchaseFailsWhenBroke() {
         var w = PetWallet()
         w.debugSetCoins(500)
-        let paid = PetBreed(id: "test", nameKey: "x", colorCount: 4,
-                            footPadding: 4,
+        let paid = PetBreed(id: "test", nameKey: "x",
+                            layout: .lpc(footPadding: 4),
                             price: 9000, traitKey: "x",
                             moodCycleHours: 18, hygieneCycleHours: 72,
                             goldMultiplier: 1.0)
@@ -591,5 +591,165 @@ final class PetPersistenceTests: XCTestCase {
             // 重新加载应拿到同样的值
             XCTAssertEqual(storage.loadPet()?.name, "一致性")
         }
+    }
+}
+
+/// 完整玩法走一遍。
+///
+/// 你问「玩法是否可靠」—— 这个测试就是答案的可执行版本：
+/// 从真实开局（不是注入存档）走到能买第二只宠物，
+/// 每一步都验账目平、状态在合理区间、钱对得上。
+@MainActor
+final class PlaythroughTests: StoreTestCase {
+
+    /// 开局：5000 送、4000 买首宠、余 1000
+    func testOnboardingLeavesExpectedBalance() {
+        let s = makeStore()
+        XCTAssertTrue(s.needsOnboarding)
+        XCTAssertEqual(s.wallet.coins, PetWallet.initialCoins)
+
+        XCTAssertTrue(s.completeOnboarding(breedID: "cat", colorIndex: 1, name: "咪咪"))
+
+        XCTAssertFalse(s.needsOnboarding)
+        XCTAssertEqual(s.wallet.coins, 1000, "5000 − 4000 = 1000")
+        XCTAssertEqual(s.pet.name, "咪咪")
+        XCTAssertEqual(s.pet.colorIndex, 1, "选的毛色要生效")
+        XCTAssertTrue(s.wallet.owns(.cat))
+        XCTAssertFalse(s.wallet.owns(.dog), "没买的品种不该拥有")
+        XCTAssertTrue(s.wallet.ledger.isBalanced)
+    }
+
+    /// 三个互动都要真正改变状态，并且扣对钱
+    func testCoreInteractionsWork() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "T")
+
+        // 先把状态压低，否则满值时喂食只补一点
+        s.debugSet(pet: Fixture.pet(satiety: 0.2, mood: 0.2, hygiene: 0.2))
+
+        let now = Date()
+        let before = (s.pet.satiety(at: now), s.pet.mood(at: now), s.pet.hygiene(at: now))
+        let coinsBefore = s.wallet.coins
+
+        XCTAssertTrue(s.feed(.kibble), "钱够就该喂成功")
+        XCTAssertGreaterThan(s.pet.satiety(at: Date()), before.0, "喂食要提升饱食")
+        XCTAssertLessThan(s.wallet.coins, coinsBefore, "喂食要花钱")
+
+        s.play()
+        XCTAssertGreaterThan(s.pet.mood(at: Date()), before.1, "玩耍要提升心情")
+
+        s.clean()
+        XCTAssertGreaterThan(s.pet.hygiene(at: Date()), before.2, "洗澡要提升清洁")
+
+        XCTAssertTrue(s.wallet.ledger.isBalanced)
+    }
+
+    /// 没钱时只能吃剩饭，且不会卡死（防死锁的兜底）
+    func testCannotDeadlockWhenBroke() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "T")
+
+        var w = s.wallet
+        w.debugSetCoins(0)
+        s.debugSet(pet: Fixture.pet(satiety: 0.0), wallet: w)
+
+        XCTAssertFalse(s.feed(.kibble), "没钱买不了普通粮")
+        XCTAssertTrue(s.feed(.scraps), "饭必须永远吃得起")
+        XCTAssertGreaterThan(s.pet.satiety(at: Date()), 0, "吃了就该有饱食")
+        XCTAssertTrue(s.wallet.ledger.isBalanced)
+    }
+
+    /// 离线看家要发钱，且不超过今日额度
+    func testOfflineSettlementRespectsCap() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "T")
+
+        var w = s.wallet
+        w.lastCollectedAt = Date().addingTimeInterval(-8 * 3600)
+        s.debugSet(pet: Fixture.pet(satiety: 0.8, mood: 0.8), wallet: w)
+
+        let before = s.wallet.coins
+        guard let r = s.settleRewards() else { return XCTFail("离线 8h 该有收益") }
+
+        XCTAssertGreaterThan(s.wallet.coins, before, "看家要赚钱")
+        XCTAssertLessThanOrEqual(r.cappedCoins, s.pet.stage.dailyCap,
+                                 "单次结算不能超过每日额度")
+        XCTAssertTrue(s.wallet.ledger.isBalanced)
+    }
+
+    /// **反复开关 app 不能刷满额度。**
+    /// todayEarned 必须落盘 —— 这是额度制最主要的刷币面。
+    func testCannotFarmCapByRelaunching() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "T")
+
+        var w = s.wallet
+        w.lastCollectedAt = Date().addingTimeInterval(-24 * 3600)
+        s.debugSet(pet: Fixture.pet(satiety: 0.9, mood: 0.9), wallet: w)
+        s.settleRewards()
+        let afterFirst = s.wallet.coins
+
+        // 重开 app 九次。**不重置 lastCollectedAt** ——
+        // 那是「上次结算时间」，重置它等于伪造「又离线了 24 小时」，
+        // 测的就不是刷币而是时间旅行了。真实的重启只是重新读存档。
+        for _ in 0..<9 {
+            let again = makeStore()
+            again.settleRewards()
+        }
+
+        let final = makeStore()
+        let cap = final.pet.stage.dailyCap
+
+        // **判据是 todayEarned，不是余额增量。**
+        // 第一版断言「余额增量 < 额度」失败了（216 > 170），一查是我写错：
+        // 上线奖励和成就**刻意不占额度**（见 CoinReason.countsTowardDailyCap），
+        // 所以余额可以合法地超出额度。真正要防的是「看家收益刷满额度」。
+        XCTAssertLessThanOrEqual(final.wallet.todayEarned, cap,
+                                 "看家收益超过每日额度 —— 能靠反复重启刷币")
+
+        // 上线奖励有 5h 间隔门槛（读 lastCollectedAt），
+        // 连续重启拿不到第二次
+        let bonuses = final.wallet.ledger.total(for: .loginBonus)
+        XCTAssertLessThanOrEqual(bonuses, CheckInReward.coins,
+                                 "上线奖励的间隔门槛失效了 —— 连点就能刷")
+        XCTAssertTrue(final.wallet.ledger.isBalanced)
+    }
+
+    /// 攒够钱能买第二只，买完能自由切换
+    func testCanBuyAndSwitchBreed() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "T")
+
+        var w = s.wallet
+        w.debugSetCoins(20000)
+        s.debugSet(wallet: w)
+
+        // 两个 starter 都是免费的，直接解锁
+        XCTAssertTrue(s.purchase(.dog))
+        XCTAssertTrue(s.wallet.owns(.dog))
+
+        XCTAssertTrue(s.choose(breedID: "dog", colorIndex: 2))
+        XCTAssertEqual(s.pet.breedID, "dog")
+        XCTAssertEqual(s.pet.colorIndex, 2)
+
+        // 换回来也要行 —— 买过就是永久拥有
+        XCTAssertTrue(s.choose(breedID: "cat", colorIndex: 3))
+        XCTAssertEqual(s.pet.breedID, "cat")
+        XCTAssertTrue(s.wallet.ledger.isBalanced)
+    }
+
+    /// **毛色可以反复换。** 你报的 bug：看起来「选完一次就不能再选」。
+    /// 根因在 PetsView 花名册立绘写死 colorIndex: 0（已修），
+    /// store 这层本来就是好的 —— 这个测试锁住它。
+    func testCoatCanBeChangedRepeatedly() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "T")
+
+        for i in [1, 2, 3, 0, 2] {
+            XCTAssertTrue(s.choose(breedID: "cat", colorIndex: i))
+            XCTAssertEqual(s.pet.colorIndex, i, "毛色应能反复切换")
+        }
+        // 每次切换都该记进收藏成就
+        XCTAssertEqual(s.pet.triedColors?.count, 4)
     }
 }

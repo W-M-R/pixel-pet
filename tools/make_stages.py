@@ -28,6 +28,10 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 from pnglib import load, save, px, setpx
 
+# 布局默认值 = LPC「Cats and Dogs」。
+# 布局不同的素材用 --cell/--cols/--rows/--foot-y 覆盖 ——
+# Swift 侧对应 PetSheetLayout（见 Sources/Models/PetSheetLayout.swift），
+# 两边要一致，否则派生帧的脚底对不上 footPadding。
 CELL = 32
 COLS = 16
 ROWS = 8
@@ -270,9 +274,25 @@ def build(name, stage, cfg):
 
 
 def main():
+    global CELL, COLS, ROWS, FOOT_Y
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--pets", nargs="*", default=["cat", "dog"])
+    ap.add_argument("--cell", type=int, default=CELL,
+                    help="单格边长（源像素），默认 32")
+    ap.add_argument("--cols", type=int, default=COLS,
+                    help="sheet 总列数，默认 16")
+    ap.add_argument("--rows", type=int, default=ROWS,
+                    help="sheet 总行数，默认 8")
+    ap.add_argument("--foot-y", type=int, default=FOOT_Y,
+                    help="成年帧脚底行，默认 26")
     args = ap.parse_args()
+
+    # 覆盖模块级常量 —— build/pick_drop_rows 都读它们
+    CELL, COLS, ROWS, FOOT_Y = args.cell, args.cols, args.rows, args.foot_y
+    if (CELL, COLS, ROWS, FOOT_Y) != (32, 16, 8, 26):
+        print(f"⚠️  非默认布局：cell={CELL} cols={COLS} rows={ROWS} foot_y={FOOT_Y}")
+        print("   记得 Swift 侧 PetSheetLayout 用同样的值。")
 
     all_ok = True
     for name in args.pets:

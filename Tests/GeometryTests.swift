@@ -152,16 +152,17 @@ final class PetSpriteSheetTests: XCTestCase {
     /// 按 4 帧播会导致走路每周期「抽」一下趴下或闪一帧空白 ——
     /// 这就是「走路一顿一顿」的根因。防回归。
     func testWalkUsesThreeFramePingPong() {
-        XCTAssertEqual(PetSpriteSheet.walkFrameSequence, [0, 1, 2, 1])
-        XCTAssertEqual(PetSpriteSheet.walkFrameCount(row: 0), 3)
-        XCTAssertFalse(PetSpriteSheet.walkFrameSequence.contains(PetSpriteSheet.idleColumn),
+        let l = PetSheetLayout.lpc(footPadding: 5)
+        XCTAssertEqual(l.walkSequence, [0, 1, 2, 1])
+        XCTAssertEqual(l.walkFrameCount, 3)
+        XCTAssertFalse(l.walkSequence.contains(l.idleColumn ?? -1),
                        "走路序列不能包含第 4 格（坐姿）")
     }
 
     /// 帧序必须是往复而非硬循环 —— 首尾都是 passing pose 之外的姿态，
     /// 中间姿 col1 出现两次
     func testWalkSequenceIsPingPong() {
-        let seq = PetSpriteSheet.walkFrameSequence
+        let seq = PetSheetLayout.lpc(footPadding: 5).walkSequence
         XCTAssertEqual(seq.first, 0)
         XCTAssertEqual(seq.filter { $0 == 1 }.count, 2,
                        "passing pose 应出现两次")
@@ -169,8 +170,106 @@ final class PetSpriteSheetTests: XCTestCase {
 
     /// idle 用第 4 格（坐姿）
     func testIdleUsesSittingFrame() {
-        XCTAssertEqual(PetSpriteSheet.idleColumn, 3)
+        XCTAssertEqual(PetSheetLayout.lpc(footPadding: 5).idleColumn, 3)
+    }
+
+    /// **布局必须是每个品种自己的，不能有第二份真相。**
+    ///
+    /// 修的 bug：`PetBreed.colorCount` 与 `PetSpriteSheet.colorCount`
+    /// 曾经并存。加一个 2 色品种时，毛色选择器读前者显示 2 格，
+    /// 而取帧读后者按 4 色算列偏移 → 取到越界列。
+    /// `SKTexture(rect:in:)` 不会崩，只是取到空白或邻帧，静默出错。
+    func testBreedColorCountComesFromLayout() {
+        for b in PetBreed.all {
+            XCTAssertEqual(b.colorCount, b.layout.colorCount,
+                           "\(b.id) 的毛色数有两份真相")
+            XCTAssertEqual(b.footPadding, b.layout.footPadding)
+        }
+    }
+
+    /// 布局自身要自洽 —— 走路帧不能超出一个循环的列数
+    func testLayoutIsSelfConsistent() {
+        for b in PetBreed.all {
+            let l = b.layout
+            XCTAssertGreaterThan(l.colorCount, 0)
+            XCTAssertGreaterThan(l.columnsPerColor, 0)
+            XCTAssertFalse(l.walkSequence.isEmpty)
+            for col in l.walkSequence {
+                XCTAssertLessThan(col, l.columnsPerColor,
+                                  "\(b.id) 走路帧 \(col) 超出循环列数")
+            }
+            if let idle = l.idleColumn {
+                XCTAssertLessThan(idle, l.columnsPerColor)
+            }
+            XCTAssertEqual(l.facingRows.count, PetSpriteSheet.Facing.allCases.count)
+            XCTAssertGreaterThan(l.footPadding, 0)
+            XCTAssertLessThan(l.footPadding, l.cell)
+        }
     }
 }
 
 // MARK: - 生命阶段与品种抽象
+
+/// 布局抽象是否真的支持「长得不像猫狗」的动物。
+///
+/// 这组测试是**抽象的验收标准**。之前布局是 `PetSpriteSheet` 的全局常量，
+/// 注释却写着「加新宠物不需要改渲染代码」—— 那只在新素材严格照抄
+/// LPC 布局时成立。现在验证：换布局确实不用改渲染代码。
+final class SheetLayoutFlexibilityTests: XCTestCase {
+
+    /// 48×48 格、2 毛色、每方向 4 帧走路、没有坐姿列的假想动物
+    private var exotic: PetSheetLayout {
+        PetSheetLayout(cell: 48,
+                       columnsPerColor: 4,
+                       colorCount: 2,
+                       walkSequence: [0, 1, 2, 3],
+                       idleColumn: nil,          // 没有专门的坐姿帧
+                       facingRows: [0, 2, 3, 1], // 行序也不同
+                       eatRow: nil,              // 没有进食帧
+                       footPadding: 6,
+                       sleepColumns: 2,
+                       sleepRows: 2)
+    }
+
+    func testExoticLayoutIsSelfConsistent() {
+        let l = exotic
+        XCTAssertEqual(l.frameSize, CGSize(width: 48, height: 48))
+        XCTAssertEqual(l.walkFrameCount, 4, "4 帧走路应被如实报告")
+        XCTAssertNil(l.idleColumn)
+        for col in l.walkSequence {
+            XCTAssertLessThan(col, l.columnsPerColor)
+        }
+    }
+
+    /// 行语义不同也要能正确映射朝向
+    func testFacingRowsAreRemapped() {
+        let l = exotic
+        XCTAssertEqual(PetSpriteSheet.Facing.right.row(in: l), 0)
+        XCTAssertEqual(PetSpriteSheet.Facing.front.row(in: l), 2)
+        XCTAssertEqual(PetSpriteSheet.Facing.back.row(in: l), 3)
+        XCTAssertEqual(PetSpriteSheet.Facing.left.row(in: l), 1)
+    }
+
+    /// 没有进食行时要降级，而不是取到不存在的第 4 行
+    func testEatRowFallsBackWhenAbsent() {
+        let row = PetSpriteSheet.Action.eat.row(in: exotic)
+        XCTAssertEqual(row, 0, "无进食帧应回退到侧视行")
+
+        // LPC 的仍是 r4
+        XCTAssertEqual(PetSpriteSheet.Action.eat.row(in: PetBreed.cat.layout), 4)
+    }
+
+    /// LPC 布局作为基准不能被改动 —— 猫狗依赖它
+    func testLPCLayoutUnchanged() {
+        let l = PetSheetLayout.lpc(footPadding: 5)
+        XCTAssertEqual(l.cell, 32)
+        XCTAssertEqual(l.colorCount, 4)
+        XCTAssertEqual(l.columnsPerColor, 4)
+        XCTAssertEqual(l.walkSequence, [0, 1, 2, 1])
+        XCTAssertEqual(l.idleColumn, 3)
+        XCTAssertEqual(l.facingRows, [0, 1, 2, 3])
+        XCTAssertEqual(l.eatRow, 4)
+        XCTAssertEqual(l.sleepColumns, 4)
+        XCTAssertEqual(l.sleepRows, 2)
+    }
+}

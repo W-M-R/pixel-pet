@@ -100,14 +100,25 @@ final class PetBreedGeometryTests: XCTestCase {
     func testAllBreedsHaveSaneFootPadding() {
         for b in PetBreed.all {
             XCTAssertGreaterThan(b.footPadding, 0, "\(b.id) 的 footPadding 应大于 0")
-            XCTAssertLessThan(b.footPadding, PetSpriteSheet.frameSize.height / 2,
+            XCTAssertLessThan(b.footPadding, b.layout.cell / 2,
                               "\(b.id) 的 footPadding 过大")
         }
     }
 
-    /// 中英文物种称呼都要有 —— 原来中文是硬编码三元，加品种会显示错
-    func testEveryBreedHasBothNouns() {
+    /// 每个品种的本地化必须齐全。
+    ///
+    /// 原来这个测试的循环体是**空的** —— 名字叫 testEveryBreedHasBothNouns，
+    /// 但里面什么都没断言（那两个 noun 字段随 AI 台词一起删了，
+    /// 删的时候把断言掏空却留了个空壳）。加品种忘补文案不会被抓到，
+    /// 界面上会直接显示 raw key。
+    func testEveryBreedHasLocalizedText() {
         for b in PetBreed.all {
+            for key in [b.nameKey, b.traitKey] {
+                XCTAssertFalse(key.isEmpty, "\(b.id) 缺 key")
+                XCTAssertNotEqual(L(key), key,
+                                  "\(b.id) 的 \(key) 没有译文 —— 界面会显示 key 本身")
+                XCTAssertFalse(L(key).isEmpty)
+            }
         }
     }
 }
@@ -305,8 +316,8 @@ final class BreedBalanceTests: XCTestCase {
     func testHygieneCycleDoesNotAffectEarnings() {
         let base = PetBreed.cat
         let variant = PetBreed(
-            id: "variant", nameKey: base.nameKey, colorCount: base.colorCount,
-            footPadding: base.footPadding, price: base.price,
+            id: "variant", nameKey: base.nameKey, layout: base.layout,
+            price: base.price,
             traitKey: base.traitKey,
             moodCycleHours: base.moodCycleHours,
             hygieneCycleHours: 96,          // 只改这个

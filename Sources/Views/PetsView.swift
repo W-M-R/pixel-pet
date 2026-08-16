@@ -244,7 +244,11 @@ struct PetsView: View {
                     now = Date()
                 } label: {
                     HStack(spacing: Pixel.u(2)) {
-                        BreedPortrait(breed: breed, colorIndex: 0,
+                        // 当前这只用它真实的毛色，其余品种用 0 号。
+                        // 原来一律传 0 —— 换毛色后这一行的立绘不变，
+                        // 看起来像「毛色只能选一次」。
+                        BreedPortrait(breed: breed,
+                                      colorIndex: isCurrent ? pet.colorIndex : 0,
                                       size: Pixel.u(10))
                         VStack(alignment: .leading, spacing: 2) {
                             Text(verbatim: L(breed.nameKey))

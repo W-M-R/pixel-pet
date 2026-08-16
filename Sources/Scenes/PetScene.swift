@@ -43,6 +43,10 @@ final class PetScene: SKScene {
 
     private var colorIndex: Int = 0
     private var breed: PetBreed = .cat
+
+    /// 当前品种的精灵表布局。帧尺寸、毛色数、走路帧序、行语义都在里面。
+    /// 注意别和 `layout`（房间家具布局）混了。
+    private var sheetLayout: PetSheetLayout { breed.layout }
     private var stage: PetStage = .adult
 
     /// 宠物当前行为。和 PetState 的「需求」分开——需求是数据，行为是表现。
@@ -174,7 +178,8 @@ final class PetScene: SKScene {
         addChild(shadow)
 
         let firstFrame = sheet.map {
-            PetSpriteSheet.texture(from: $0, row: 0, column: 0, colorIndex: colorIndex)
+            PetSpriteSheet.texture(from: $0, row: 0, column: 0,
+                                   colorIndex: colorIndex, layout: sheetLayout)
         }
         pet = SKSpriteNode(texture: firstFrame)
         pet.texture?.filteringMode = .nearest
@@ -264,7 +269,8 @@ final class PetScene: SKScene {
         guard let sheet, let pet else { return }
         let frames = PetSpriteSheet.frames(from: sheet,
                                            action: .walk(facing),
-                                           colorIndex: colorIndex)
+                                           colorIndex: colorIndex,
+                                           layout: sheetLayout)
         guard !frames.isEmpty else { return }
         pet.removeAction(forKey: "anim")
         let anim = SKAction.animate(with: frames,
@@ -277,7 +283,8 @@ final class PetScene: SKScene {
     private func applyEatAnimation(then completion: @escaping () -> Void) {
         guard let sheet, let pet else { return }
         let frames = PetSpriteSheet.frames(from: sheet, action: .eat,
-                                           colorIndex: colorIndex)
+                                           colorIndex: colorIndex,
+                                           layout: sheetLayout)
         guard !frames.isEmpty else { completion(); return }
         pet.removeAction(forKey: "anim")
         let chew = SKAction.animate(with: frames,
@@ -296,7 +303,8 @@ final class PetScene: SKScene {
         applyDepthScale()
 
         let frames = sleepSheet.map {
-            PetSpriteSheet.sleepFrames(from: $0, colorIndex: colorIndex)
+            PetSpriteSheet.sleepFrames(from: $0, colorIndex: colorIndex,
+                                       layout: sheetLayout)
         } ?? []
 
         if frames.count >= 2 {
@@ -310,10 +318,12 @@ final class PetScene: SKScene {
             pet.run(.repeatForever(breathe), withKey: "anim")
         } else if let sheet {
             // 回退方案
-            pet.texture = PetSpriteSheet.texture(from: sheet,
-                                                 row: PetSpriteSheet.Facing.right.row,
-                                                 column: 0,
-                                                 colorIndex: colorIndex)
+            pet.texture = PetSpriteSheet.texture(
+                from: sheet,
+                row: PetSpriteSheet.Facing.right.row(in: sheetLayout),
+                column: 0,
+                colorIndex: colorIndex,
+                layout: sheetLayout)
             pet.texture?.filteringMode = .nearest
             let s0 = currentPetScale
             pet.yScale = s0 * 0.82
@@ -336,12 +346,15 @@ final class PetScene: SKScene {
     private func applyIdlePose() {
         guard let sheet, let pet else { return }
         pet.removeAction(forKey: "anim")
+        // ⚠️ cat 的 r1/r2 第 4 格是空白，所以正/背向时回退到走路第 0 帧。
+        // 没有专门坐姿列的布局（idleColumn == nil）同样回退。
         let sideways = (facing == .right || facing == .left)
+        let column = (sideways ? sheetLayout.idleColumn : nil) ?? 0
         pet.texture = PetSpriteSheet.texture(from: sheet,
-                                             row: facing.row,
-                                             column: sideways
-                                                ? PetSpriteSheet.idleColumn : 0,
-                                             colorIndex: colorIndex)
+                                             row: facing.row(in: sheetLayout),
+                                             column: column,
+                                             colorIndex: colorIndex,
+                                             layout: sheetLayout)
         pet.texture?.filteringMode = .nearest
         // 从睡姿回来要复位缩放，并保留当前深度的透视缩放
         applyDepthScale()
@@ -526,10 +539,10 @@ final class PetScene: SKScene {
     /// 帧是 32×32，而猫的内容底边在第 26 行，即底部有 5 行空白。
     /// 所以脚底 = 中心 - (16 - 5) × pixelScale。
     private var petFeetY: CGFloat {
-        let frameH = PetSpriteSheet.frameSize.height        // 32
+        let frameH = sheetLayout.cell
         // 按品种取 —— 原来写死 5（按猫实测），而狗的内容底边在 y=28，
         // 所以狗的影子和食盆一直偏 2 源像素
-        let bottomPadding = breed.footPadding
+        let bottomPadding = sheetLayout.footPadding
         // ⚠️ 纹理已预放大 prescale 倍，pet.yScale 相应变小了同样倍数。
         // 「1 源像素在屏幕上占多少 pt」= yScale × prescale。
         return pet.position.y

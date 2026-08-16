@@ -95,9 +95,6 @@ struct DebugPanel: View {
                         .font(.caption2)
                 }
 
-                Section("素材授权") {
-                    NavigationLink("Credits") { CreditsView() }
-                }
             }
             .navigationTitle("调试")
             .toolbar {

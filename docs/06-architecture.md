@@ -17,7 +17,7 @@ App/            组装
 Core → Models → {Scenes, Services} → Views → App
 ```
 
-`Models` 不依赖任何上层，所以能脱离 UI 测试 —— 149 个测试里绝大多数在这一层。
+`Models` 不依赖任何上层，所以能脱离 UI 测试 —— 162 个测试里绝大多数在这一层。
 
 ### 由脚本强制，不靠自觉
 
@@ -96,7 +96,8 @@ public，是全方案的一半成本、80% 的实际收益）。上面修循环�
 | `Interaction`(Views) | 互动的 UI 配置（图标/文案/延迟） | 表里加一条 + 动画 + 本地化 |
 | `StatDimension` 表 | HUD 状态条从手写展开改成遍历 | 表里加一条 |
 | `FoodItem` | 四档食物 + 按量计价 | `all` 加一条 + `PixelIcon` 加 case |
-| `PetBreed` | 品种注册表，含 sheet 布局与几何参数 | `all` 加一条 + 跑素材脚本 |
+| `PetBreed` | 品种注册表（属性、经济、布局引用） | `all` 加一条 + 跑素材脚本 |
+| `PetSheetLayout` | **帧布局 per-breed**：格尺寸、毛色数、走路帧序、行语义、footPadding | 加一个 `static let`，不改渲染代码 |
 | `PetStage` | 生命阶段的全部参数（额度、周期、体型、sheet 后缀） | 四档写死，加档要同时改帧派生脚本 |
 | `StateThreshold` | 「多饿才算饿」原来散在 4 处，其中中英文 prompt 各一份必须手动同步 | 改一处 |
 | `Pixel` + `PixelPanel` / `PixelBar` | UI 的网格、配色、字号、组件 | 用 token，不写字面量 |
@@ -224,7 +225,7 @@ public，是全方案的一半成本、80% 的实际收益）。上面修循环�
 
 ## 测试策略
 
-149 个测试，分布：
+162 个测试，分布：
 
 | 文件 | 覆盖 |
 |---|---|
@@ -232,6 +233,8 @@ public，是全方案的一半成本、80% 的实际收益）。上面修循环�
 | `CoinLedgerTests` | **账目恒等式**、原因分类、分项汇总、流水、旧存档迁移 |
 | `ViewStructureTests` | 扫源码：sheet 页能否关掉、设置页不含宠物内容、无 AI 残留 |
 | `IconSourceTests` | 扫源码：**禁止 SF Symbol / emoji**、图标索引与 sheet 格数一致 |
+| `PlaythroughTests` | 真实开局→互动→结算→买第二只，含**反复重启不能刷额度** |
+| `SheetLayoutFlexibilityTests` | 换布局（48×48/2 色/4 帧走路）不改渲染代码 |
 | `PetStoreTests` | 互动通路、存档、结算、开局与商店 |
 | `PetPersistenceTests` | 落盘、加载、内存与文件实现行为一致 |
 | `ConfigTests` | 阶段/品种参数、**品种支配检验**、Fixture 自测 |

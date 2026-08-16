@@ -25,7 +25,6 @@ struct PetSettingsView: View {
 
                 Section {
                     NavigationLink(L("settings.language")) { LanguagePickerView() }
-                    NavigationLink(L("credits.title")) { CreditsView() }
                 }
             }
             .navigationTitle(L("settings.title"))

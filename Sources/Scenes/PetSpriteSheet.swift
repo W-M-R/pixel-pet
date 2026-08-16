@@ -1,45 +1,43 @@
 import SpriteKit
 
-/// LPC「Cats and Dogs」sprite sheet 的帧布局。
+/// 精灵表取帧。
 ///
-/// 布局是实测出来的（解码 PNG 逐格扫 alpha + 亮度重心），不是猜的：
-/// - 512×256，帧 32×32，16 列 × 8 行，仅前 5 行有内容
-/// - 每 4 列为一个动画循环，横向重复 4 次 = 4 种毛色
-/// - r0 侧视朝右 / r1 朝前(镜头) / r2 朝后 / r3 侧视朝左 / r4 吃东西
+/// **布局参数不在这里** —— 帧尺寸、毛色数、走路帧序、行语义都由
+/// `PetSheetLayout` 提供，`PetBreed` 注入。曾经它们是这个 enum 的
+/// 全局 `static let`，导致 `PetBreed.colorCount` 与这里的 `colorCount`
+/// 双轨：2 色品种的毛色选择器显示 2 格，渲染却按 4 色算列偏移。
 ///
-/// 朝向判定依据：每列不透明高度剖面里头部更高。
-/// r0 在 x=18..22 处高 17-18px（右侧），r3 在 x=10..12 处高 18-19px（左侧）。
+/// 这里只剩「怎么取、怎么放大」两件事。
 ///
 /// ⚠️ 两个坑：
 /// 1. SpriteKit 纹理坐标原点在左下，sheet 行号自上而下，取 rect 必须 Y 翻转。
 /// 2. `filteringMode` 不从父纹理继承，每个派生纹理都要单独设，否则放大发虚。
 enum PetSpriteSheet {
 
-    static let frameSize = CGSize(width: 32, height: 32)
-    static let columnsPerColor = 4
-    static let colorCount = 4
-
-    /// 宠物朝向。命名对应 sheet 行。
+    /// 宠物朝向。索引对应 `PetSheetLayout.facingRows`。
     enum Facing: Int, CaseIterable {
         case right = 0
         case front = 1   // 面向镜头
         case back  = 2   // 背对镜头
         case left  = 3
 
-        var row: Int { rawValue }
+        func row(in layout: PetSheetLayout) -> Int {
+            layout.facingRows.indices.contains(rawValue)
+                ? layout.facingRows[rawValue]
+                : rawValue
+        }
     }
 
-    /// 动作。目前 sheet 里只有 walk（4 向）和 eat。
-    /// sleep 缺失——包描述提到 "bonus sleeping images"，但实测 r4 是吃东西的
-    /// 咀嚼动画（头部上下小幅移动），没有独立的睡眠帧。第 5 步需要自绘。
+    /// 动作。
     enum Action {
         case walk(Facing)
         case eat
 
-        var row: Int {
+        func row(in layout: PetSheetLayout) -> Int {
             switch self {
-            case .walk(let f): return f.row
-            case .eat: return 4
+            case .walk(let f): return f.row(in: layout)
+            // 没有进食行时借用侧视行 —— 不换帧也比取到空白好
+            case .eat: return layout.eatRow ?? layout.facingRows.first ?? 0
             }
         }
 
@@ -50,16 +48,6 @@ enum PetSpriteSheet {
             case .eat:  return 0.22
             }
         }
-    }
-
-    /// 毛色索引 0..<4。LPC 包原文 "Four colors each"。
-    struct ColorVariant: Identifiable, Hashable {
-        let index: Int
-        var id: Int { index }
-    }
-
-    static var colorVariants: [ColorVariant] {
-        (0..<colorCount).map { ColorVariant(index: $0) }
     }
 
     /// 预放大倍数。
@@ -91,31 +79,36 @@ enum PetSpriteSheet {
     static func texture(from sheet: SKTexture,
                         row: Int,
                         column: Int,
-                        colorIndex: Int) -> SKTexture {
+                        colorIndex: Int,
+                        layout: PetSheetLayout) -> SKTexture {
         let sheetW = sheet.size().width
         let sheetH = sheet.size().height
         guard sheetW > 0, sheetH > 0 else { return sheet }
 
-        let absoluteColumn = colorIndex * columnsPerColor + column
-        let originX = CGFloat(absoluteColumn) * frameSize.width
-        let rowsInSheet = Int(sheetH / frameSize.height)
+        // 毛色索引夹到布局声明的范围 —— 越界会取到空白或邻帧（不崩，静默错）。
+        // 会越界的实际路径：旧存档的 colorIndex 是 3，切到 2 色品种。
+        let color = min(max(0, colorIndex), max(0, layout.colorCount - 1))
+        let absoluteColumn = color * layout.columnsPerColor + column
+        let cell = layout.cell
+        let originX = CGFloat(absoluteColumn) * cell
+        let rowsInSheet = Int(sheetH / cell)
         let flippedRow = rowsInSheet - row - 1
-        let originY = CGFloat(flippedRow) * frameSize.height
+        let originY = CGFloat(flippedRow) * cell
 
         let rect = CGRect(x: originX / sheetW,
                           y: originY / sheetH,
-                          width: frameSize.width / sheetW,
-                          height: frameSize.height / sheetH)
+                          width: cell / sheetW,
+                          height: cell / sheetH)
 
         let sub = SKTexture(rect: rect, in: sheet)
         sub.filteringMode = .nearest
 
         // 缓存键：sheet 尺寸能区分不同阶段的 sheet（它们尺寸相同但内容不同，
         // 所以还要带上 description 里的纹理标识）
-        let key = "\(sheet.description)|\(row)|\(column)|\(colorIndex)"
+        let key = "\(sheet.description)|\(row)|\(column)|\(color)|\(Int(cell))"
         if let hit = cache[key] { return hit }
 
-        let scaled = upscaled(sub)
+        let scaled = upscaled(sub, cell: cell)
         cache[key] = scaled
         return scaled
     }
@@ -124,10 +117,10 @@ enum PetSpriteSheet {
     ///
     /// `interpolationQuality = .none` 是关键 —— 放大这一步必须保持硬边，
     /// 否则像素画会先被糊一次。
-    static func upscaled(_ tex: SKTexture) -> SKTexture {
+    static func upscaled(_ tex: SKTexture, cell: CGFloat) -> SKTexture {
         let src = tex.cgImage()
-        let w = Int(frameSize.width) * prescale
-        let h = Int(frameSize.height) * prescale
+        let w = Int(cell) * prescale
+        let h = Int(cell) * prescale
 
         guard let ctx = CGContext(data: nil, width: w, height: h,
                                   bitsPerComponent: 8, bytesPerRow: 0,
@@ -171,60 +164,60 @@ enum PetSpriteSheet {
     /// rework 版本的说明写明「3 tiles per direction」。
     ///
     /// 不用 `0→1→2` 硬循环：那样从 col2 跳回 col0 是同侧腿突然换边，会跳。
-    static let walkFrameSequence = [0, 1, 2, 1]
-
-    /// 静止姿态用的列。第 4 格是坐/趴姿，正好当 idle。
-    static let idleColumn = 3
-
-    /// 每行实际可用于走路的帧数（3 帧，第 4 格是坐姿不算）
-    static func walkFrameCount(row: Int) -> Int { 3 }
+    ///
+    /// 帧序现在在 `PetSheetLayout.walkSequence` —— 走路帧数不同的素材
+    /// 只要换布局，不改这里。
 
     static func frames(from sheet: SKTexture,
                        action: Action,
-                       colorIndex: Int) -> [SKTexture] {
+                       colorIndex: Int,
+                       layout: PetSheetLayout) -> [SKTexture] {
+        let row = action.row(in: layout)
         switch action {
         case .walk:
-            // ping-pong 序列，跳过第 4 格的坐姿
-            return walkFrameSequence.map {
-                texture(from: sheet, row: action.row, column: $0, colorIndex: colorIndex)
+            return layout.walkSequence.map {
+                texture(from: sheet, row: row, column: $0,
+                        colorIndex: colorIndex, layout: layout)
             }
         case .eat:
-            // 进食行 4 格都是有效的咀嚼帧
-            return (0..<columnsPerColor).map {
-                texture(from: sheet, row: action.row, column: $0, colorIndex: colorIndex)
+            // 进食行整个循环都是有效的咀嚼帧
+            return (0..<layout.columnsPerColor).map {
+                texture(from: sheet, row: row, column: $0,
+                        colorIndex: colorIndex, layout: layout)
             }
         }
     }
 
     /// 睡觉 sheet（自绘补的，主 sheet 里确认没有 sleep 帧）。
-    /// 布局 4 列(毛色) × 2 行(呼气/吸气)，每格 32×32。
+    ///
+    /// 布局在 `PetSheetLayout.sleepColumns/Rows`：列 = 毛色，行 = 呼气/吸气。
     /// 生成脚本 tools/make_sleep.py —— 调色板从主 sheet 自动提取，
-    /// 保证 4 种毛色与走路帧一致。
-    enum Sleep {
-        static let columns = 4
-        static let rows = 2
-    }
-
-    static func sleepFrames(from sheet: SKTexture, colorIndex: Int) -> [SKTexture] {
+    /// 保证毛色与走路帧一致。
+    static func sleepFrames(from sheet: SKTexture,
+                            colorIndex: Int,
+                            layout: PetSheetLayout) -> [SKTexture] {
         let sheetW = sheet.size().width
         let sheetH = sheet.size().height
         guard sheetW > 0, sheetH > 0 else { return [] }
 
-        return (0..<Sleep.rows).map { row in
-            let flippedRow = Sleep.rows - row - 1   // Y 翻转
-            let rect = CGRect(x: CGFloat(colorIndex) * frameSize.width / sheetW,
-                              y: CGFloat(flippedRow) * frameSize.height / sheetH,
-                              width: frameSize.width / sheetW,
-                              height: frameSize.height / sheetH)
+        let cell = layout.cell
+        let color = min(max(0, colorIndex), max(0, layout.sleepColumns - 1))
+
+        return (0..<layout.sleepRows).map { row in
+            let flippedRow = layout.sleepRows - row - 1   // Y 翻转
+            let rect = CGRect(x: CGFloat(color) * cell / sheetW,
+                              y: CGFloat(flippedRow) * cell / sheetH,
+                              width: cell / sheetW,
+                              height: cell / sheetH)
             let sub = SKTexture(rect: rect, in: sheet)
             sub.filteringMode = .nearest
 
             // ⚠️ 必须和走路帧一样做预放大。
             // 节点缩放已经按 prescale 除过（见 PetScene.currentPetScale），
             // 这里若返回原尺寸纹理，睡觉时宠物会缩到 1/prescale。
-            let key = "sleep|\(sheet.description)|\(row)|\(colorIndex)"
+            let key = "sleep|\(sheet.description)|\(row)|\(color)|\(Int(cell))"
             if let hit = cache[key] { return hit }
-            let scaled = upscaled(sub)
+            let scaled = upscaled(sub, cell: cell)
             cache[key] = scaled
             return scaled
         }

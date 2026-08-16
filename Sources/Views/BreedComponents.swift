@@ -45,9 +45,12 @@ struct BreedPortrait: View {
               let full = UIImage(data: data),
               let cg = full.cgImage else { return nil }
 
-        let cell = Int(PetSpriteSheet.frameSize.width)
+        // 布局从品种读 —— 不同素材的格子尺寸/毛色列数可能不同
+        let layout = breed.layout
+        let cell = Int(layout.cell)
         // 侧视朝右行(r0)的第 0 列，按毛色偏移
-        let x = colorIndex * PetSpriteSheet.columnsPerColor * cell
+        let color = min(max(0, colorIndex), layout.colorCount - 1)
+        let x = color * layout.columnsPerColor * cell
         let rect = CGRect(x: x, y: 0, width: cell, height: cell)
         guard let cropped = cg.cropping(to: rect) else { return nil }
 
