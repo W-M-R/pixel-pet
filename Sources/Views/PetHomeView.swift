@@ -231,7 +231,7 @@ struct PetHomeView: View {
             }
             ForEach(Interaction.all) { act in
                 ActionButton(titleKey: act.titleKey, icon: act.icon) {
-                    store.perform(act)
+                    store.perform(act.effect)
                     scene.playAnimation(for: act.id)
                     say(act.trigger, delay: act.sayDelay)
                 }

@@ -18,7 +18,14 @@ STAGE = {
     'adult':   dict(cycle=8.0,  cap=225),
     'elder':   dict(cycle=9.0,  cap=205),
 }
-MOOD_CYCLE = 18.0          # PetState.Decay.mood
+# PetBreed —— 品种属性差异
+# ⚠️ 这张表原来不存在，脚本没有 gold 参数，所以算不出它被引用的品种表。
+BREED = {
+    'cat': dict(mood=18.0, hygiene=72.0, gold=1.00),
+    'dog': dict(mood=14.0, hygiene=72.0, gold=1.10),
+}
+DEFAULT_BREED = 'cat'
+MOOD_CYCLE = BREED[DEFAULT_BREED]['mood']   # 兼容旧调用
 
 # OfflineCareReward.Rate
 RATE_FLOOR, RATE_SPAN = 0.05, 0.30
@@ -56,14 +63,20 @@ def food_cost(current_satiety, food='kibble'):
 
 
 def simulate_day(stage, feeds_per_day, food='kibble', mood_override=None,
-                 boost=False):
+                 boost=False, breed=DEFAULT_BREED):
     """
     模拟一天。返回 (收入, 支出, 净结余)。
 
-    ⚠️ 收入要走额度累加，否则每段都能拿满额度 —— 那正是刷币漏洞。
+    ⚠️ 两个容易错的地方：
+    1. 收入要走额度累加，否则每段都能拿满额度 —— 那正是刷币漏洞。
+    2. **金币加成乘在 min() 之前**，和 Swift 一致
+       （RewardRules.evaluate）。乘在之后会让加成不受额度限制，
+        算出的数字偏高，也就看不出「加成被封顶吃掉」这个真实现象。
     """
     cfg = STAGE[stage]
     cycle, cap = cfg['cycle'], cfg['cap']
+    b = BREED[breed]
+    mood_cycle, gold = b['mood'], b['gold']
     gap = 24.0 / feeds_per_day
     remain = cap
     income = 0
@@ -72,8 +85,8 @@ def simulate_day(stage, feeds_per_day, food='kibble', mood_override=None,
     for _ in range(feeds_per_day):
         if gap >= MIN_SETTLE_H and remain > 0:
             s = avg(gap, cycle)
-            m = mood_override if mood_override is not None else avg(gap, MOOD_CYCLE)
-            want = int(cap * rate(s, m, boost) + 0.5)
+            m = mood_override if mood_override is not None else avg(gap, mood_cycle)
+            want = int(cap * rate(s, m, boost) * gold + 0.5)
             pay = min(remain, want)
             income += pay
             remain -= pay
@@ -84,6 +97,79 @@ def simulate_day(stage, feeds_per_day, food='kibble', mood_override=None,
         cost += food_cost(after, food)
 
     return income, cost, income - cost
+
+
+# ---- 配平求解与支配检验 ----
+
+def net_for(stage, mood_cycle, gold, feeds):
+    """给定任意 (心情周期, 金币) 算日净结余。用于反解配平系数。"""
+    cfg = STAGE[stage]
+    cycle, cap = cfg['cycle'], cfg['cap']
+    gap = 24.0 / feeds
+    remain = cap
+    income = 0
+    cost = 0
+    for _ in range(feeds):
+        if gap >= MIN_SETTLE_H and remain > 0:
+            s = avg(gap, cycle)
+            m = avg(gap, mood_cycle)
+            pay = min(remain, int(cap * rate(s, m) * gold + 0.5))
+            income += pay
+            remain -= pay
+        if gap >= CHECKIN_MIN_H:
+            income += CHECKIN_COINS
+        cost += food_cost(max(0.0, 1 - gap / cycle))
+    return income - cost
+
+
+def solve_gold(mood_cycle, target, stage='adult', feeds=4,
+               lo=0.85, hi=1.25, step=0.01):
+    """
+    反解让日净结余等于 target 的 goldMultiplier。
+
+    ⚠️ **用枚举而不是二分。**
+
+    目标函数含取整（`int(x+0.5)`），是分段常数函数 —— 数学上**没有根**，
+    它直接跳过目标值。所以：
+      · scipy.brentq 的前置条件 "f must be continuous" 不满足
+      · fsolve 需要导数，而这里梯度几乎处处为 0
+      · 手写二分会收敛到平台的**左边缘**，零余量：
+        再减 1e-6 就掉到下一档。取整到两位小数时很容易掉下去。
+
+    实际后果：docs/07-shop.md 的配平表曾有 4 行（16/18/19/20h）
+    取整后落到 92 而不是 96。
+
+    参数只有两位小数、区间也，所以候选只有约 40 个 —— 直接枚举，
+    取命中平台的**中点**（双向余量最大）。无解时明确报错。
+    """
+    n = int(round((hi - lo) / step))
+    cands = [round(lo + i * step, 2) for i in range(n + 1)]
+    hits = [g for g in cands
+            if net_for(stage, mood_cycle, g, feeds) == target]
+    if not hits:
+        raise ValueError(
+            f"心情 {mood_cycle}h 没有两位小数的金币值能让 "
+            f"{stage} {feeds}次/天 的净结余等于 {target}")
+    return hits[len(hits) // 2]
+
+
+def dominates(a, b):
+    """a 支配 b：每项都不差，且至少一项更好。"""
+    return all(x >= y for x, y in zip(a, b)) and any(x > y for x, y in zip(a, b))
+
+
+def find_dominance(stage, feeds_range=(1, 2, 3, 4)):
+    """
+    找出支配其它品种的品种。返回 [(强者, 弱者), ...]，空 = 没有最优解。
+
+    设计目标是「没有哪个品种明显最优」，这就是它的可执行版本。
+    曾经漏掉这个检查：狗的金币 1.05 时猫在全部四阶段都支配它。
+    """
+    prof = {name: tuple(simulate_day(stage, f, breed=name)[2]
+                        for f in feeds_range)
+            for name in BREED}
+    return [(x, y) for x in prof for y in prof
+            if x != y and dominates(prof[x], prof[y])], prof
 
 
 def bar(v, mx, w=22):
@@ -124,7 +210,7 @@ def main():
 
     print()
     print("=" * 74)
-    print(" 三、设计目标校验")
+    print(" 三、设计目标校验（照顾越勤越赚）")
     print("=" * 74)
     print(" 「照顾好宠物=赚得多」的可执行版本：从放养到目标节奏严格递增。")
     print()
@@ -165,7 +251,37 @@ def main():
 
     print()
     print("=" * 74)
-    print(" 四、单次喂食花费（按当前饱食，成年）")
+    print(" 四、品种差异与支配检验")
+    print("=" * 74)
+    print(" 设计目标：没有哪个品种明显最优。")
+    print(" 检验方式：支配关系 —— 若某品种在【所有频次】都不差且至少一项更好，")
+    print("           它就支配了对手，设计目标不成立。")
+    print()
+    print(f" {'品种':<6s} {'心情':>5s} {'金币':>6s}  1-4 次/天的净结余")
+    print("-" * 74)
+    for name, b in BREED.items():
+        row = [simulate_day('adult', f, breed=name)[2] for f in (1, 2, 3, 4)]
+        print(f" {name:<6s} {b['mood']:4.0f}h {b['gold']:6.2f}  {row}")
+    print()
+    for stage in STAGE:
+        pairs, prof = find_dominance(stage)
+        mark = "✅ 无支配" if not pairs else f"❌ {pairs}"
+        print(f"  {stage:<8s} {mark}")
+    print()
+    print(" 反解配平系数（让「成年 4 次/天」等于猫的基准）:")
+    target = simulate_day('adult', 4, breed='cat')[2]
+    cells = []
+    for mc in (13, 14, 15, 16, 17, 18, 19, 20, 21, 22):
+        try:
+            cells.append(f"{mc}h→{solve_gold(mc, target):.2f}")
+        except ValueError:
+            cells.append(f"{mc}h→无解")
+    for i in range(0, len(cells), 5):
+        print("   " + "  ".join(cells[i:i+5]))
+
+    print()
+    print("=" * 74)
+    print(" 五、单次喂食花费（按当前饱食，成年）")
     print("=" * 74)
     print(f" {'饱食':>6s} {'剩饭':>6s} {'普通粮':>7s} {'罐头':>6s} {'小鱼干':>7s}")
     for cur in (0.0, 0.3, 0.6, 0.9):

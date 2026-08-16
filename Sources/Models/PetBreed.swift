@@ -194,13 +194,24 @@ struct PetBreed: Identifiable, Hashable, Codable, Sendable {
         price: 0, traitKey: "trait.balanced",
         moodCycleHours: 18, hygieneCycleHours: 72, goldMultiplier: 1.00)
 
-    /// 狗：黏人型，开局可选。心情掉得快，但金币加成补回来
+    /// 狗：黏人型，开局可选。心情掉得快，但金币加成更高。
+    ///
+    /// ⚠️ 金币曾是 1.05，那时**猫在全部四个阶段都支配狗**
+    /// （4 次/天打平，1-3 次/天猫都更高，狗没有任何频次占优）。
+    ///
+    /// 根因：1.05 是按「4 次/天日净结余相等」反解的，但那个点双方都
+    /// 撞额度上限、加成被 `min(remainingCap, ...)` 吃掉，所以「打平」是假象。
+    /// 低频时加成生效了，可心情劣势也生效，狗就纯亏。
+    ///
+    /// 1.10 让差值变成 1次 +0 / 2次 −2 / 3次 +3 / 4次 +8 ——
+    /// 猫在低频占优、狗在高频占优，支配关系消失。
+    /// 由 `ConfigTests.testNoBreedDominatesAnother` 守着。
     static let dog = PetBreed(
         id: "dog", nameKey: "breed.dog",
         colorCount: 4, footPadding: 3,
         englishNoun: "dog", chineseNoun: "小狗",
         price: 0, traitKey: "trait.clingy",
-        moodCycleHours: 14, hygieneCycleHours: 72, goldMultiplier: 1.05)
+        moodCycleHours: 14, hygieneCycleHours: 72, goldMultiplier: 1.10)
 
     /// 开局可选的品种（免费）
     static var starters: [PetBreed] { all.filter(\.isStarter) }

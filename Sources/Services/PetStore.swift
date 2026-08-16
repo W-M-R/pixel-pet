@@ -224,10 +224,13 @@ final class PetStore {
     /// 执行一次互动。
     ///
     /// play/clean 原本是两个逐字同构的 4 行方法，每加一个互动就复制一次。
-    /// 现在把「改哪个时间戳、涨哪个计数」交给 `Interaction.apply`。
-    func perform(_ interaction: Interaction) {
+    /// 现在把「改哪个时间戳、涨哪个计数」交给 `InteractionEffect.apply`。
+    ///
+    /// 参数是 `InteractionEffect`（Models）而非 `Interaction`（Views）——
+    /// Services 不该依赖 UI 配置。
+    func perform(_ effect: InteractionEffect) {
         extendAwakeIfNeeded()
-        interaction.apply(&pet, Date())
+        effect.apply(&pet, Date())
         persist()
     }
 

@@ -3,15 +3,82 @@
 ## 分层
 
 ```
-Views/          SwiftUI 界面 + 像素风设计 token
-Scenes/         SpriteKit 场景（房间、宠物、气泡）
+Core/           基础设施：本地化、设计 token（Pixel）
 Models/         值类型：状态、规则、配置表
-Services/       有状态的协调者：存档、AI、通知、本地化
-Core/           基础设施（本地化）
+Scenes/         SpriteKit 场景（房间、宠物、气泡）
+Services/       有状态的协调者：存档、AI、通知
+Views/          SwiftUI 界面
+App/            组装
 ```
 
-依赖方向单一：`Views → Services → Models`，`Scenes → Models`。
-`Models` 不依赖任何上层，所以能脱离 UI 测试 —— 96 个测试里绝大多数在这一层。
+**依赖方向严格单向：**
+
+```
+Core → Models → {Scenes, Services} → Views → App
+```
+
+`Models` 不依赖任何上层，所以能脱离 UI 测试 —— 117 个测试里绝大多数在这一层。
+
+### 由脚本强制，不靠自觉
+
+`tools/check_layers.sh` 接进了 build phase，越界会**直接编译失败**。
+
+它防的是实际发生过的三种越界：
+
+| 越界 | 修法 |
+|---|---|
+| `Models/Interaction` → `Views/PixelIcon` | 拆成 `InteractionEffect`(Models) + `Interaction`(Views) |
+| `Models/Interaction` → `Scenes/PetSpriteSheet` | `Duration` 跟着 `Interaction` 去 Views |
+| `Scenes/RoomPalette` → `Views/Pixel` | `PixelStyle.swift` 移到 `Core/Design/` |
+
+脚本会剥掉注释再匹配 —— 注释里提到上层类型是合理的（解释为什么这么分层）。
+
+### 为什么不拆 SPM 模块
+
+调研过完整方案，结论是**不值得**：
+
+| 成本 | 数量 |
+|---|---|
+| `public` 标注 | 约 350-370 处 |
+| 手写 `public init` | 10 个（memberwise init 不跨模块） |
+| `SKScene` override 加 public | 8 个 |
+| 新增 `Package.swift` | 6 个 |
+| 补 import | 39 个文件 |
+
+而收益在当前条件下全部不成立或有更便宜的替代：
+
+- **无第二个 consumer** —— 单 app target，没有 widget / watch / App Clip。
+  「以后要嵌入」如果指 WidgetKit，需要的是抽 `PetCore` **一个**包，不是六个。
+- **规模不匹配** —— 6200 行生产代码，SPM 的收支平衡点在数万行 / 多人并行。
+- **可能更慢** —— 6 个包改一个 public 签名触发下游全重编；
+  单 target 有 whole-module-optimization 和更好的增量粒度。
+- **资源是硬约束** —— 7 处 `Bundle.main` 调用，加上 `L()` 的
+  `object_setClass(Bundle.main, ...)` 重定向 hack。资源移进 SPM 包会让
+  `L()` 彻底失效（那个 hack 只 patch `Bundle.main`），
+  要么改 `L()` 签名（波及 8 个文件），要么资源留 app target
+  （那模块就不是自包含的）。
+- **`@Observable` 静默失败** —— 类型标 public 后，漏标某个属性
+  **不报错，只是 SwiftUI 不刷新**。3 个 `@Observable` 类几十个属性，
+  这类 bug 的调试成本远超收益。
+
+**等真要做 widget 时再抽 `PetCore` 一个包**（12 个 Models 文件，约 170 个
+public，是全方案的一半成本、80% 的实际收益）。上面修循环的工作正好是前置
+条件，不会白做。
+
+### 「各模块出一个对象」已经做到了
+
+这个诉求不需要 SPM。现有形态：
+
+| 组件 | 入口 |
+|---|---|
+| `RoomRenderer` | `build(into:size:wallBaseY:unit:)` |
+| `BubbleLayer` | 对象 + `speak`/`emote`/`sync`，依赖用 `anchor` 闭包注入 |
+| `OpeningSequence` | `plan(store:)` → 值 → `announce(_:speak:fallback:)` |
+| `PetStore` / `PetTalkCoordinator` | `@Observable` + 语义方法 |
+| `PetScene` | `configure(...)` + `trigger*` + 两个回调 |
+| `RewardEngine` | `rules` 注入 + `settle(_:)` 纯函数 |
+
+`PetHomeView` 顶部那四行 `@State` 就是组装点。
 
 ## 抽象层清单
 
@@ -21,7 +88,8 @@ Core/           基础设施（本地化）
 |---|---|---|
 | `RewardRule` 协议 + `RewardEngine` | 加奖励规则不改核心逻辑 | 实现协议 + 注册进 `RewardEngine.default` |
 | `AchievementRule` | 19 条成就是**同一类型的 19 个实例**，数据驱动 | 表里加一条，有 `streak()`/`counted()` 两个构造辅助 |
-| `Interaction` 表 | 加互动从 22 个编辑点降到 3-4 个 | 表里加一条 + 动画 + 本地化 |
+| `InteractionEffect`(Models) | 互动对状态的作用，纯数据 | 表里加一条 |
+| `Interaction`(Views) | 互动的 UI 配置（图标/文案/延迟） | 表里加一条 + 动画 + 本地化 |
 | `StatDimension` 表 | HUD 状态条从手写展开改成遍历 | 表里加一条 |
 | `FoodItem` | 四档食物 + 按量计价 | `all` 加一条 + `PixelIcon` 加 case |
 | `PetBreed` | 品种注册表，含 sheet 布局与几何参数 | `all` 加一条 + 跑素材脚本 |
@@ -88,15 +156,17 @@ Core/           基础设施（本地化）
 
 ## 测试策略
 
-96 个测试，分布：
+117 个测试，分布：
 
-| 文件 | 数量 | 覆盖 |
-|---|---|---|
-| `EconomyTests` | 28 | 收益公式、额度、计价、平衡回归 |
-| `PetStoreTests` + `OpeningSequenceTests` | 26 | 互动通路、存档、结算、开场时序 |
-| `PetStateTests` 等 | 42 | 衰减、阈值、几何、帧序、品种参数 |
+| 文件 | 覆盖 |
+|---|---|
+| `EconomyTests` | 收益公式、额度、按量计价、平衡回归 |
+| `PetStoreTests` | 互动通路、存档、结算、开局与商店 |
+| `ConfigTests` | 阶段/品种参数、**品种支配检验**、Fixture 自测 |
+| `GeometryTests` | 2.5D 地板、精灵表帧布局 |
+| `PetStateTests` | 衰减、作息、阈值一致性 |
 
-两条原则：
+三条原则：
 
 **大量测试是有据可查的回归测试**，注释写明曾经的 bug。
 `testStrokingDoesNotCauseSleep`（「一点它就睡觉」）、
@@ -106,8 +176,15 @@ Core/           基础设施（本地化）
 这些的价值远高于覆盖率数字。
 
 **表驱动的抽象自带测试收益。**
-`testEveryInteractionMutatesState` 遍历 `Interaction.all`，
-加新互动时自动覆盖。
+`testEveryInteractionMutatesState` 遍历 `InteractionEffect.all`，
+加新互动时自动覆盖。`testInteractionTablesAreAligned` 则保证
+拆开的两张表（Models 的作用表、Views 的 UI 表）不漂移。
+
+**设计目标写成断言，而不是只写在文档里。**
+「没有哪个品种明显最优」= `testNoBreedDominatesAnother` 遍历
+四阶段 × 四频次做支配检验。这条曾经只写在文档里，
+结果狗的金币定 1.05 时猫在全部阶段都支配它，没人发现
+（因为只对齐了 4 次/天一个工作点，而那个点双方都撞额度上限）。
 
 ### 仍不可测的部分
 
@@ -121,6 +198,10 @@ Core/           基础设施（本地化）
 `at now:` 参数，会波及 `stage` 的所有调用方。
 
 ## 工具链
+
+`tools/check_layers.sh` —— 分层依赖检查，接进 build phase。
+自测过：注入一处越界会以退出码 1 失败并指出文件行号。
+
 
 `tools/` 下 5 个绘图脚本共用 `pnglib.py`（68 行 PNG 编解码），
 零重复。`econ_report.py` 是数值报表，不用 pnglib。

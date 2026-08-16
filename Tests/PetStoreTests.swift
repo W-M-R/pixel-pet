@@ -15,7 +15,7 @@ final class PetStoreTests: StoreTestCase {
     ///
     /// 加新互动时这个测试自动覆盖它 —— 这是 `Interaction.all` 表的收益。
     func testEveryInteractionMutatesState() {
-        for act in Interaction.all {
+        for act in InteractionEffect.all {
             let store = makeStore()
             var pet = store.pet
             let before = Date().addingTimeInterval(-3600)
@@ -37,17 +37,29 @@ final class PetStoreTests: StoreTestCase {
         var pet = PetState()
         let now = Date()
 
-        Interaction.play.apply(&pet, now)
+        InteractionEffect.play.apply(&pet, now)
         XCTAssertEqual(pet.totalPlayCount, 1)
 
-        Interaction.clean.apply(&pet, now)
+        InteractionEffect.clean.apply(&pet, now)
         XCTAssertEqual(pet.totalCleanCount, 1)
     }
 
     /// 注册表里的 id 不能重复 —— `PetScene.playAnimation(for:)` 按 id 分发
     func testInteractionIDsAreUnique() {
-        let ids = Interaction.all.map(\.id)
+        let ids = InteractionEffect.all.map(\.id)
         XCTAssertEqual(ids.count, Set(ids).count)
+    }
+
+    /// **UI 配置表与作用表必须一一对应。**
+    ///
+    /// 拆成 InteractionEffect（Models）和 Interaction（Views）后，
+    /// 两张表可能漂移 —— 加了按钮忘了作用，或反之。
+    func testInteractionTablesAreAligned() {
+        XCTAssertEqual(Interaction.all.count, InteractionEffect.all.count)
+        let uiIDs = Set(Interaction.all.map(\.id))
+        let effectIDs = Set(InteractionEffect.all.map(\.id))
+        XCTAssertEqual(uiIDs, effectIDs,
+                       "UI 表与作用表的 id 集合不一致")
     }
 
     /// 状态维度表要和 PetState 的三维对上

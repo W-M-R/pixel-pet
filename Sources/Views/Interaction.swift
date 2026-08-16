@@ -1,27 +1,24 @@
 import SwiftUI
 
-/// 一种主动互动。
+/// 一个互动按钮的 UI 配置。
 ///
-/// **建这层的原因**：加一个互动（比如「梳毛」）原本要改 22 个编辑点、
-/// 跨 10 个文件 —— 状态字段、Codable、计数、衰减周期、派生数值、
-/// 需求枚举、Store 方法、台词分类、AI prompt、场景动画、emote 映射、
-/// UI 图标、按钮、状态条、颜色、统计页、成就、通知、本地化。
+/// **和 `InteractionEffect` 的分工**：
+/// - `InteractionEffect`（Models 层）—— 改哪个时间戳、涨哪个计数、触发哪类台词
+/// - `Interaction`（这里，Views 层）—— 按钮什么图标、什么文案、台词延迟多久
 ///
-/// 这张表把其中**纯数据的那部分**收在一处：按钮长什么样、点了改哪个
-/// 时间戳、涨哪个计数、对应哪条台词。剩下的（动画、成就、通知）
-/// 仍然各自实现，因为它们不是数据。
-///
-/// ⚠️ **刻意不做的事**：没有 `InteractionHandler` 协议、没有注册中心。
-/// 现在只有 3 个互动，抽象的目的是**消除重复**而不是搭框架 ——
-/// 引入协议会让「洗澡时宠物做什么」需要在协议、实现、注册表之间
-/// 跳转才能看懂，而现在 `PetScene.triggerClean` 13 行一眼就懂。
+/// 原来两者合在 `Models/Interaction.swift`，导致 Models 依赖 Views
+/// 和 Scenes（`PixelIcon`、`Pixel.RGB`、`PetSpriteSheet`），
+/// 形成模块级循环。见 docs/06-architecture.md 的分层规则。
 struct Interaction: Identifiable {
 
     /// 互动动画的时长常量。
     ///
+    /// **放在 Views 层的原因**：它服务于「什么时候说台词」这个 UI 时序，
+    /// 而且依赖 `PetSpriteSheet`（Scenes）。Models 不该知道动画多长。
+    ///
     /// **为什么要集中**：说台词的延迟必须和动画时长对得上，但两者原来
     /// 分别写在 `PetHomeView`（0.7/0.8/1.6）和 `PetScene`（各自的 SKAction）里，
-    /// 跨文件的隐式依赖。实测发现喂食那条已经对不上：
+    /// 是跨文件的隐式依赖。实测发现喂食那条已经对不上：
     /// 咀嚼是 4 帧 × 0.22s × 重复 4 轮 = **3.52s**，而延迟写的是 1.6s ——
     /// 台词在动画演到一半就冒出来了。
     enum Duration {
@@ -49,53 +46,41 @@ struct Interaction: Identifiable {
         static let sayAfterEat: TimeInterval = 2.2
     }
 
-    let id: String
+    /// 底层作用。id 和 trigger 都从它取，避免两处定义漂移。
+    let effect: InteractionEffect
     /// 按钮文案的本地化 key
     let titleKey: String
     /// 按钮图标
     let icon: PixelIcon
-    /// 触发哪类台词
-    let trigger: PetLineContext.Trigger
     /// 台词延迟（秒）。要等动画演到合适的节点再说话。
     let sayDelay: TimeInterval
-    /// 应用到状态上：改时间戳 + 涨计数。
-    ///
-    /// 用闭包而非协议 —— 三个实现都是 2 行，协议的间接性不划算。
-    let apply: (inout PetState, Date) -> Void
+
+    var id: String { effect.id }
+    var trigger: PetLineContext.Trigger { effect.trigger }
 
     // MARK: - 注册表
 
-    /// 喂食单独处理，不在这张表里 —— 它要先弹选择器、按量计价、扣钱、
-    /// 设 buff、记 foodCounts，和另两个「一键归满」不是同一种东西。
     static let all: [Interaction] = [play, clean]
 
     static let play = Interaction(
-        id: "play",
+        effect: .play,
         titleKey: "action.play",
         icon: .ball,
-        trigger: .stroked,
-        sayDelay: Duration.sayAfterHop,
-        apply: { pet, now in
-            pet.lastPlayedAt = now
-            pet.totalPlayCount = (pet.totalPlayCount ?? 0) + 1
-        })
+        sayDelay: Duration.sayAfterHop)
 
     static let clean = Interaction(
-        id: "clean",
+        effect: .clean,
         titleKey: "action.clean",
         icon: .bath,
-        trigger: .cleaned,
-        sayDelay: Duration.sayAfterSplash,
-        apply: { pet, now in
-            pet.lastCleanedAt = now
-            pet.totalCleanCount = (pet.totalCleanCount ?? 0) + 1
-        })
+        sayDelay: Duration.sayAfterSplash)
 }
 
 /// 状态维度的展示信息。
 ///
 /// 原来 `statusBar` 里三个 `StatBar` 是手写展开的，加维度要改 UI；
 /// 现在改成遍历这张表。
+///
+/// **在 Views 层**：`tint` 是 `Pixel.RGB`，纯展示属性。
 struct StatDimension: Identifiable {
     let id: String
     let labelKey: String

@@ -43,6 +43,12 @@ targets:
   PixelPet:
     type: application
     platform: iOS
+    preBuildScripts:
+      # 分层依赖检查。拆 SPM 模块能让编译器强制分层，但对这个规模
+      # 成本过高（见 docs/06-architecture.md），用脚本达到同样约束。
+      - script: ./tools/check_layers.sh
+        name: Check layer dependencies
+        basedOnDependencyAnalysis: false
     sources:
       - path: Sources
       - path: Resources

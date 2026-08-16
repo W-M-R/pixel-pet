@@ -183,3 +183,142 @@ final class FixtureTests: XCTestCase {
         XCTAssertEqual(p.hygiene(), 1.0, accuracy: 0.01)
     }
 }
+
+/// 品种配平。
+///
+/// 设计目标是「没有哪个品种明显最优」，这里把它写成可执行的断言。
+final class BreedBalanceTests: XCTestCase {
+
+    /// 模拟一天的净结余（与 tools/econ_report.py 同一模型）
+    private func netDaily(breed: PetBreed, stage: PetStage,
+                          feedsPerDay n: Int) -> Int {
+        let cap = stage.dailyCap
+        let cycle = stage.hungerCycleHours
+        let gap = 24.0 / Double(n)
+        var remain = cap
+        var income = 0
+        var cost = 0
+
+        for _ in 0..<n {
+            if gap >= 0.5 && remain > 0 {
+                let s = RewardEngine.averageLevel(offlineHours: gap,
+                                                  cycleHours: cycle)
+                let m = RewardEngine.averageLevel(offlineHours: gap,
+                                                  cycleHours: breed.moodCycleHours)
+                let rate = OfflineCareReward.achievementRate(satiety: s, mood: m)
+                // ⚠️ 加成乘在 min 之前，和 RewardRules.evaluate 一致
+                let want = Int((Double(cap) * rate * breed.goldMultiplier).rounded())
+                let pay = min(remain, want)
+                income += pay
+                remain -= pay
+            }
+            if gap >= CheckInReward.minIntervalHours {
+                income += CheckInReward.coins
+            }
+            let after = max(0, 1 - gap / cycle)
+            cost += FoodItem.kibble.cost(currentSatiety: after)
+        }
+        return income - cost
+    }
+
+    /// a 支配 b：每项都不差，且至少一项更好
+    private func dominates(_ a: [Int], _ b: [Int]) -> Bool {
+        zip(a, b).allSatisfy { $0 >= $1 } && zip(a, b).contains { $0 > $1 }
+    }
+
+    /// **核心断言：没有品种支配其他品种。**
+    ///
+    /// 曾经狗的金币是 1.05，那时猫在全部四个阶段都支配狗 ——
+    /// 4 次/天打平，但 1-3 次/天猫都更高，狗没有任何频次占优。
+    ///
+    /// 根因：1.05 是按「4 次/天相等」反解的，而那个点双方都撞额度上限、
+    /// 加成被 min() 吃掉，所以「打平」是假象。
+    func testNoBreedDominatesAnother() {
+        let paces = [1, 2, 3, 4]
+        for stage in PetStage.allCases {
+            let profiles = PetBreed.all.map { breed in
+                (breed.id, paces.map { netDaily(breed: breed, stage: stage,
+                                                feedsPerDay: $0) })
+            }
+            for (nameA, a) in profiles {
+                for (nameB, b) in profiles where nameA != nameB {
+                    XCTAssertFalse(dominates(a, b),
+                        "\(stage) 阶段 \(nameA)\(a) 支配了 \(nameB)\(b) —— "
+                        + "设计目标是没有品种明显最优")
+                }
+            }
+        }
+    }
+
+    /// 每个品种都要在某个频次占优 —— 否则它没有存在理由
+    func testEveryBreedWinsSomewhere() {
+        let paces = [1, 2, 3, 4]
+        for stage in PetStage.allCases {
+            for breed in PetBreed.all {
+                let mine = paces.map { netDaily(breed: breed, stage: stage,
+                                                feedsPerDay: $0) }
+                let others = PetBreed.all.filter { $0.id != breed.id }
+                guard !others.isEmpty else { continue }
+
+                let winsSomewhere = paces.indices.contains { i in
+                    others.allSatisfy { other in
+                        mine[i] >= netDaily(breed: other, stage: stage,
+                                            feedsPerDay: paces[i])
+                    }
+                }
+                XCTAssertTrue(winsSomewhere,
+                    "\(breed.id) 在 \(stage) 的任何频次都不占优")
+            }
+        }
+    }
+
+    /// 金币加成必须是两位小数。
+    ///
+    /// 配平系数是从枚举网格里取的（见 econ_report.solve_gold），
+    /// 三位小数取整到两位后可能掉档 —— 文档里曾有 4 行踩这个坑。
+    func testGoldMultipliersAreTwoDecimals() {
+        for breed in PetBreed.all {
+            let scaled = breed.goldMultiplier * 100
+            XCTAssertEqual(scaled, scaled.rounded(), accuracy: 0.0001,
+                           "\(breed.id) 的金币 \(breed.goldMultiplier) 不是两位小数")
+        }
+    }
+
+    /// 加成要在合理区间 —— 过大会让品种选择变成「必须选某只」
+    func testGoldMultipliersAreInSaneRange() {
+        for breed in PetBreed.all {
+            XCTAssertGreaterThanOrEqual(breed.goldMultiplier, 0.85)
+            XCTAssertLessThanOrEqual(breed.goldMultiplier, 1.25)
+        }
+    }
+
+    /// 心情周期要在合理区间
+    func testMoodCyclesAreInSaneRange() {
+        for breed in PetBreed.all {
+            XCTAssertGreaterThanOrEqual(breed.moodCycleHours, 12)
+            XCTAssertLessThanOrEqual(breed.moodCycleHours, 24)
+        }
+    }
+
+    /// 清洁周期不影响收益 —— 改它不该让净结余变化。
+    ///
+    /// 这条锁住「清洁不在达成率公式里」这个设计（72h 周期让它长期接近
+    /// 1.0，放进公式只会稀释另两维）。所以它只能做体验差异。
+    func testHygieneCycleDoesNotAffectEarnings() {
+        let base = PetBreed.cat
+        let variant = PetBreed(
+            id: "variant", nameKey: base.nameKey, colorCount: base.colorCount,
+            footPadding: base.footPadding, englishNoun: base.englishNoun,
+            chineseNoun: base.chineseNoun, price: base.price,
+            traitKey: base.traitKey,
+            moodCycleHours: base.moodCycleHours,
+            hygieneCycleHours: 96,          // 只改这个
+            goldMultiplier: base.goldMultiplier)
+
+        for n in [1, 2, 3, 4] {
+            XCTAssertEqual(netDaily(breed: base, stage: .adult, feedsPerDay: n),
+                           netDaily(breed: variant, stage: .adult, feedsPerDay: n),
+                           "清洁周期不该影响收益")
+        }
+    }
+}

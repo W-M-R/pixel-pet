@@ -3,6 +3,14 @@ import SpriteKit
 
 /// 全项目的视觉常量。
 ///
+/// **为什么在 `Core/Design/` 而不是 `Views/`**：它被 `Scenes/RoomPalette`
+/// 依赖（那 38 个颜色全是 `Pixel.RGB`），放在 Views 会形成
+/// `Scenes → Views` 的反向依赖。设计 token 是基础设施，不是视图。
+///
+/// ⚠️ 它 `import SpriteKit` 只为 `RGB.sk` 产 `SKColor`（跨层同色的关键）。
+/// 这让 Core 层链 SpriteKit —— 可以用 `#if canImport` 隔离，
+/// 但那样 `RoomPalette` 就用不了 `.sk` 了，得不偿失。
+///
 /// **建这一层的原因**：之前 SpriteKit 侧有 `PetScene.Palette` 约束配色，
 /// SwiftUI 侧却完全没有对应约束 —— 于是散落出 4 种圆角、4 种白色叠层、
 /// 10 种字号、3 套进度条实现。单看每处都合理，叠起来就是「不精致」。
