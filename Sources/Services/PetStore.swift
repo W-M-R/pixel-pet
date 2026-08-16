@@ -204,7 +204,8 @@ final class PetStore {
 
         if food.moodBonus > 0 {
             let m = min(1.0, pet.mood(at: now) + food.moodBonus)
-            pet.lastPlayedAt = now.addingTimeInterval(-(1 - m) * PetState.Decay.mood)
+            pet.lastPlayedAt = now.addingTimeInterval(
+                -(1 - m) * PetState.Decay.mood(for: pet.breed))
         }
 
         if food.grantsBoost {
@@ -276,14 +277,66 @@ final class PetStore {
         persist()
     }
 
-    func choose(breedID: String, colorIndex: Int) {
+    /// 切换品种/毛色。
+    ///
+    /// ⚠️ 只能切**已拥有**的品种。买过就永久解锁，之后免费切换 ——
+    /// 「买」是一次性解锁而非消耗品，否则玩家会不敢换。
+    @discardableResult
+    func choose(breedID: String, colorIndex: Int) -> Bool {
+        let breed = PetBreed.byID(breedID)
+        guard wallet.owns(breed) else { return false }
+
         pet.breedID = breedID
         pet.colorIndex = colorIndex
         // 记录用于收藏成就
         var breeds = pet.triedBreeds ?? []; breeds.insert(breedID); pet.triedBreeds = breeds
         var colors = pet.triedColors ?? []; colors.insert(colorIndex); pet.triedColors = colors
         persist()
+        return true
     }
+
+    // MARK: - 开局与商店
+
+    /// 是否还没走完开局流程（选宠物 + 起名）
+    var needsOnboarding: Bool { !wallet.hasCompletedOnboarding }
+
+    /// 完成开局：扣掉首宠价格、解锁该品种、起名。
+    ///
+    /// 首宠从启动资金里扣（5000 送、4000 扣），让「选宠物」有重量感 ——
+    /// 直接送的话开局的选择缺少代价。剩下 1000 作为起步资金。
+    @discardableResult
+    func completeOnboarding(breedID: String, colorIndex: Int,
+                            name: String) -> Bool {
+        let breed = PetBreed.byID(breedID)
+        guard breed.isStarter else { return false }   // 开局只能选免费品种
+        guard wallet.coins >= PetWallet.starterPrice else { return false }
+
+        wallet.coins -= PetWallet.starterPrice
+        wallet.ownedBreeds.insert(breed.id)
+        wallet.hasCompletedOnboarding = true
+
+        pet.breedID = breed.id
+        pet.colorIndex = colorIndex
+        pet.name = String(name.trimmingCharacters(in: .whitespacesAndNewlines)
+                              .prefix(12))
+        var breeds = pet.triedBreeds ?? []; breeds.insert(breed.id)
+        pet.triedBreeds = breeds
+        var colors = pet.triedColors ?? []; colors.insert(colorIndex)
+        pet.triedColors = colors
+
+        persist()
+        return true
+    }
+
+    /// 买一个新品种。买完不自动切换 —— 让玩家自己决定什么时候换。
+    @discardableResult
+    func purchase(_ breed: PetBreed) -> Bool {
+        guard wallet.purchase(breed) else { return false }
+        persist()
+        return true
+    }
+
+    func owns(_ breed: PetBreed) -> Bool { wallet.owns(breed) }
 
     /// 调试用：把时间戳往前推，模拟放置一段时间后的状态。
     /// 这是验证「读时算」是否正确的最快方式。

@@ -146,7 +146,7 @@ struct RewardEngine {
             offlineHours: hours,
             avgSatiety: averageLevel(offlineHours: hours, cycleHours: hungerCycle),
             avgMood: averageLevel(offlineHours: hours,
-                                  cycleHours: PetState.Decay.mood / 3600),
+                                  cycleHours: pet.breed.moodCycleHours),
             remainingCap: wallet.remainingCap(stage: pet.stage, at: now))
     }
 }

@@ -32,6 +32,19 @@ struct PetSettingsView: View {
 
                 Section {
                     NavigationLink {
+                        ShopView(store: store)
+                    } label: {
+                        HStack {
+                            Text(verbatim: L("shop.title"))
+                            Spacer()
+                            // 显示已拥有 / 总数，让玩家知道还有多少可解锁
+                            Text(verbatim: "\(PetBreed.all.filter { store.owns($0) }.count)"
+                                 + " / \(PetBreed.all.count)")
+                                .font(Pixel.mono(Pixel.labelSize))
+                                .foregroundStyle(Pixel.textDim.color)
+                        }
+                    }
+                    NavigationLink {
                         AchievementsView(store: store)
                     } label: {
                         HStack {
@@ -93,15 +106,20 @@ struct PetSettingsView: View {
 
     private var breedSection: some View {
         Section(L("settings.breed")) {
+            // 只列**已拥有**的品种 —— 未购买的不该出现在这里，
+            // 否则玩家点了没反应（choose 会返回 false）。
+            // 想要更多品种走商店（见 ShopView）。
+            let owned = PetBreed.all.filter { store.owns($0) }
             Picker(L("settings.breed"), selection: Binding(
                 get: { pet.breedID },
                 set: { store.choose(breedID: $0, colorIndex: 0) }   // 换品种时毛色归零
             )) {
-                ForEach(PetBreed.all) { b in
+                ForEach(owned) { b in
                     Text(verbatim: L(b.nameKey)).tag(b.id)
                 }
             }
             .pickerStyle(.segmented)
+            .disabled(owned.count < 2)
 
             // 毛色用色块选，比下拉直观
             HStack(spacing: 10) {

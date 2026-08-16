@@ -168,11 +168,12 @@ final class PetStoreTests: StoreTestCase {
         let store = makeStore()
         var w = store.wallet
         w.coins = 500
+        w.ownedBreeds.insert(PetBreed.dog.id)   // choose 要求已拥有
         store.debugSet(wallet: w)
         store.play()                      // 触发 persist
 
         // 换宠物不该清空钱包 —— 这是钱包独立存档的设计意图
-        store.choose(breedID: PetBreed.dog.id, colorIndex: 1)
+        XCTAssertTrue(store.choose(breedID: PetBreed.dog.id, colorIndex: 1))
         XCTAssertEqual(store.wallet.coins, 500)
     }
 
@@ -185,10 +186,18 @@ final class PetStoreTests: StoreTestCase {
         XCTAssertEqual(reopened.pet.name, "小咪")
     }
 
-    /// 换品种要记进收藏成就的进度
+    /// 换品种要记进收藏成就的进度。
+    ///
+    /// ⚠️ `choose` 现在要求**已拥有**该品种（否则免费就能玩到所有宠物），
+    /// 所以要先解锁。这个测试原来直接 choose，加了拥有校验后失败 ——
+    /// 是校验生效的证据，不是回归。
     func testChooseRecordsTriedBreeds() {
         let store = makeStore()
-        store.choose(breedID: PetBreed.dog.id, colorIndex: 0)
+        var w = store.wallet
+        w.ownedBreeds.insert(PetBreed.dog.id)
+        store.debugSet(wallet: w)
+
+        XCTAssertTrue(store.choose(breedID: PetBreed.dog.id, colorIndex: 0))
         XCTAssertTrue(store.pet.triedBreeds?.contains("dog") ?? false)
     }
 
@@ -338,5 +347,138 @@ final class OpeningSequenceTests: StoreTestCase {
         XCTAssertLessThan(OpeningSequence.greetDelay, 2.0)
         XCTAssertGreaterThan(OpeningSequence.greetDelay, 0.3,
                              "太快会在场景渲染完成前弹气泡")
+    }
+}
+
+// MARK: - 开局与商店
+
+/// 开局流程与品种购买。
+final class OnboardingStoreTests: StoreTestCase {
+
+    /// 新玩家要走开局
+    func testFreshStoreNeedsOnboarding() {
+        let store = makeStore()
+        XCTAssertTrue(store.needsOnboarding)
+        XCTAssertEqual(store.wallet.coins, PetWallet.initialCoins)
+        XCTAssertTrue(store.wallet.ownedBreeds.isEmpty)
+    }
+
+    /// 完成开局：扣钱、解锁品种、起名、落盘
+    func testCompleteOnboardingDeductsAndUnlocks() {
+        let store = makeStore()
+        XCTAssertTrue(store.completeOnboarding(breedID: PetBreed.dog.id,
+                                               colorIndex: 2, name: "旺财"))
+
+        XCTAssertEqual(store.wallet.coins,
+                       PetWallet.initialCoins - PetWallet.starterPrice,
+                       "5000 - 4000 = 1000")
+        XCTAssertTrue(store.wallet.owns(.dog))
+        XCTAssertFalse(store.needsOnboarding)
+        XCTAssertEqual(store.pet.breedID, PetBreed.dog.id)
+        XCTAssertEqual(store.pet.colorIndex, 2)
+        XCTAssertEqual(store.pet.name, "旺财")
+
+        // 重开确认落盘
+        let reopened = makeStore()
+        XCTAssertFalse(reopened.needsOnboarding)
+        XCTAssertEqual(reopened.pet.name, "旺财")
+        XCTAssertEqual(reopened.wallet.coins, 1000)
+    }
+
+    /// 名字要 trim 且截断到 12 字
+    func testOnboardingTrimsName() {
+        let store = makeStore()
+        store.completeOnboarding(breedID: PetBreed.cat.id, colorIndex: 0,
+                                 name: "  这个名字实在是太长了超过十二个字  ")
+        XCTAssertEqual(store.pet.name.count, 12)
+        XCTAssertFalse(store.pet.name.hasPrefix(" "))
+    }
+
+    /// 钱不够不能完成开局（防御性 —— 正常流程下启动资金一定够）
+    func testOnboardingFailsWithoutCoins() {
+        let store = makeStore()
+        var w = store.wallet
+        w.coins = 100
+        store.debugSet(wallet: w)
+
+        XCTAssertFalse(store.completeOnboarding(breedID: PetBreed.cat.id,
+                                                colorIndex: 0, name: "X"))
+        XCTAssertTrue(store.needsOnboarding, "失败不该标记完成")
+    }
+
+    // MARK: - 品种切换与购买
+
+    /// **只能切已拥有的品种** —— 否则免费就能玩到所有宠物
+    func testCannotSwitchToUnownedBreed() {
+        let store = makeStore()
+        store.completeOnboarding(breedID: PetBreed.cat.id, colorIndex: 0,
+                                 name: "咪咪")
+
+        XCTAssertFalse(store.choose(breedID: PetBreed.dog.id, colorIndex: 0),
+                       "没买过狗不该能切")
+        XCTAssertEqual(store.pet.breedID, PetBreed.cat.id)
+    }
+
+    /// 买过就能切，且切换免费（一次性解锁而非消耗品）
+    func testPurchaseThenSwitchFreely() {
+        let store = makeStore()
+        store.completeOnboarding(breedID: PetBreed.cat.id, colorIndex: 0,
+                                 name: "咪咪")
+        // 手动解锁狗（模拟买过）
+        var w = store.wallet
+        w.ownedBreeds.insert(PetBreed.dog.id)
+        store.debugSet(wallet: w)
+
+        let before = store.wallet.coins
+        XCTAssertTrue(store.choose(breedID: PetBreed.dog.id, colorIndex: 1))
+        XCTAssertEqual(store.wallet.coins, before, "切换不该再扣钱")
+
+        // 切回去也免费
+        XCTAssertTrue(store.choose(breedID: PetBreed.cat.id, colorIndex: 0))
+        XCTAssertEqual(store.wallet.coins, before)
+    }
+
+    /// 购买是幂等的 —— 重复买不该重复扣钱
+    func testPurchaseIsIdempotent() {
+        var w = PetWallet()
+        w.coins = 20000
+        // 造一个付费品种来测（现有两个都是 starter，price=0）
+        let paid = PetBreed(id: "test", nameKey: "x", colorCount: 4,
+                            footPadding: 4, englishNoun: "t", chineseNoun: "测",
+                            price: 9000, traitKey: "x",
+                            moodCycleHours: 18, hygieneCycleHours: 72,
+                            goldMultiplier: 1.0)
+        XCTAssertTrue(w.purchase(paid))
+        XCTAssertEqual(w.coins, 11000)
+        XCTAssertTrue(w.purchase(paid), "已拥有应返回成功")
+        XCTAssertEqual(w.coins, 11000, "不该重复扣钱")
+    }
+
+    /// 钱不够买不了
+    func testPurchaseFailsWhenBroke() {
+        var w = PetWallet()
+        w.coins = 500
+        let paid = PetBreed(id: "test", nameKey: "x", colorCount: 4,
+                            footPadding: 4, englishNoun: "t", chineseNoun: "测",
+                            price: 9000, traitKey: "x",
+                            moodCycleHours: 18, hygieneCycleHours: 72,
+                            goldMultiplier: 1.0)
+        XCTAssertFalse(w.purchase(paid))
+        XCTAssertEqual(w.coins, 500)
+        XCTAssertFalse(w.owns(paid))
+    }
+
+    /// 旧存档（没有 hasCompletedOnboarding 字段）不该被拉回开局。
+    ///
+    /// 判定依据：钱包被用过（有累计收入或领过成就）。
+    func testLegacySaveSkipsOnboarding() throws {
+        let json = """
+        {"coins":3000,"totalEarned":500,"claimedRewards":["first_feed"],
+         "lastCollectedAt":760000000,"todayEarned":0,"lastEarnDate":760000000}
+        """
+        let w = try JSONDecoder().decode(PetWallet.self,
+                                        from: Data(json.utf8))
+        XCTAssertTrue(w.hasCompletedOnboarding,
+                      "老用户不该被拉回选宠界面")
     }
 }

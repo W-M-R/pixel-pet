@@ -100,6 +100,17 @@ struct PetState: Codable, Equatable {
         static func hunger(for stage: PetStage) -> TimeInterval {
             stage.hungerCycleHours * 3600
         }
+
+        /// 按品种取心情周期。**越短越黏人。**
+        /// 这是品种间唯一真正影响收益的差异（心情占达成率 60% 权重）。
+        static func mood(for breed: PetBreed) -> TimeInterval {
+            breed.moodCycleHours * 3600
+        }
+
+        /// 按品种取清洁周期。不影响收益，只影响洗澡频率。
+        static func hygiene(for breed: PetBreed) -> TimeInterval {
+            breed.hygieneCycleHours * 3600
+        }
     }
 
     init(breedID: String = PetBreed.cat.id,
@@ -205,13 +216,17 @@ struct PetState: Codable, Equatable {
     }
 
     /// 1 = 开心，0 = 无聊
+    ///
+    /// 周期随品种变化（黏人的掉得快）。
     func mood(at now: Date = Date()) -> Double {
-        remaining(since: lastPlayedAt, span: Decay.mood, now: now)
+        remaining(since: lastPlayedAt, span: Decay.mood(for: breed), now: now)
     }
 
     /// 1 = 干净，0 = 脏
+    ///
+    /// 周期随品种变化。**不影响收益**，只影响洗澡频率。
     func hygiene(at now: Date = Date()) -> Double {
-        remaining(since: lastCleanedAt, span: Decay.hygiene, now: now)
+        remaining(since: lastCleanedAt, span: Decay.hygiene(for: breed), now: now)
     }
 
     /// 是否在打瞌睡。

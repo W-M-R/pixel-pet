@@ -6,6 +6,11 @@ struct PetHomeView: View {
     @State private var roomStore = RoomStore()
     @State private var talk = PetTalkCoordinator()
     @State private var scene = PetScene()
+    /// 开局流程是否还没走完。
+    ///
+    /// 读一次存进 @State —— 直接读 store.needsOnboarding 会在
+    /// completeOnboarding 后立刻翻转，导致 sheet 关闭动画被打断。
+    @State private var needsOnboarding = false
     @State private var showSettings = false
     @State private var showFood = false
     #if DEBUG
@@ -35,6 +40,10 @@ struct PetHomeView: View {
             .padding(.bottom, 8)
         }
         .onAppear {
+            // 首启要先走开局。放在最前 —— 后面的结算/台词都依赖
+            // 玩家已经选好宠物。
+            needsOnboarding = store.needsOnboarding
+
             scene.scaleMode = .resizeFill
             scene.layout = roomStore.layout
             syncScenePet()
@@ -52,17 +61,9 @@ struct PetHomeView: View {
                 scene.layout = roomStore.layout
             }
 
-            // 开场时序在 OpeningSequence 里（顺序有硬约束，注释在那边）
-            let plan = OpeningSequence.plan(store: store)
-            OpeningSequence.announce(
-                plan,
-                speak: { scene.showSpeech($0) },
-                fallback: {
-                    if talk.speak(store.lineContext(trigger: .appeared),
-                                  absentDays: plan.absentDays, force: true) {
-                        scene.showSpeech(talk.currentLine ?? "")
-                    }
-                })
+            // ⚠️ 开局未完成时不结算 —— 否则新玩家还没选宠物就先收到
+            // 一条「我帮你看家赚了 N 枚」，而且会白白消耗掉首日签到。
+            if !needsOnboarding { runOpening() }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.refresh() }
@@ -105,6 +106,18 @@ struct PetHomeView: View {
         }
         #endif
         .preferredColorScheme(.dark)
+        // 开局流程。用 fullScreenCover 而非条件替换整个 body ——
+        // 后者会让 PetScene 重建，宠物位置和动画状态都丢。
+        .fullScreenCover(isPresented: $needsOnboarding) {
+            OnboardingView(store: store) {
+                needsOnboarding = false
+                // 开局完成后立刻同步场景，否则还显示默认猫
+                syncScenePet()
+                // 现在才跑开场问候 —— 此时宠物已经选好、名字也有了
+                runOpening()
+            }
+            .interactiveDismissDisabled()
+        }
     }
 
     /// 把宠物的品种/毛色/阶段同步给场景。
@@ -125,6 +138,24 @@ struct PetHomeView: View {
         } else {
             fire()
         }
+    }
+
+    /// 开场结算与问候。
+    ///
+    /// 抽成方法是因为有两个调用时机：正常启动（onAppear）
+    /// 和开局完成后（fullScreenCover 的回调）。
+    private func runOpening() {
+        // 时序在 OpeningSequence 里（顺序有硬约束，注释在那边）
+        let plan = OpeningSequence.plan(store: store)
+        OpeningSequence.announce(
+            plan,
+            speak: { scene.showSpeech($0) },
+            fallback: {
+                if talk.speak(store.lineContext(trigger: .appeared),
+                              absentDays: plan.absentDays, force: true) {
+                    scene.showSpeech(talk.currentLine ?? "")
+                }
+            })
     }
 
     // MARK: - 状态栏

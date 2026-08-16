@@ -137,6 +137,42 @@ struct PetBreed: Identifiable, Hashable, Codable, Sendable {
     /// 而 nameKey 的译文是「猫」这种正式名。
     let chineseNoun: String
 
+    // MARK: - 属性差异
+
+    /// 售价（硬币）。0 = 开局赠送的基础品种。
+    ///
+    /// 定价推导见 docs/07-shop.md：中高频（3-4 次/天）约 30 天买得起，
+    /// 中频 44 天，低频基本买不起。
+    let price: Int
+
+    /// 性格标签的本地化 key。给玩家看的一句话概括。
+    let traitKey: String
+
+    /// 心情衰减周期（小时）。**越短越黏人** —— 要更频繁陪玩。
+    ///
+    /// 这是唯一真正影响收益的属性差异：心情占达成率 60% 权重，
+    /// 周期短则同样间隔下平均心情更低。
+    let moodCycleHours: Double
+
+    /// 清洁衰减周期（小时）。
+    ///
+    /// ⚠️ **不影响收益** —— 清洁不在达成率公式里（72h 周期让它长期接近
+    /// 1.0，放进去只会稀释另两维，见 RewardRule 的注释）。
+    /// 它影响的是「多久要洗一次澡」这个操作频率，属于体验差异。
+    let hygieneCycleHours: Double
+
+    /// 金币加成。用来**抵消** moodCycleHours 的优劣，让高频玩家
+    /// 无论选哪只收益都接近。
+    ///
+    /// 配平方式见 docs/07-shop.md：反解出「4 次/天日净结余相等」的系数。
+    /// 实测四个品种在 4 次/天时完全持平（都是 +96），
+    /// 只在低频（2 次/天）才出现 +6~+12 的差异 ——
+    /// 这正是想要的：**认真照顾的玩家不被品种选择惩罚**。
+    let goldMultiplier: Double
+
+    /// 是否是开局可选的基础品种
+    var isStarter: Bool { price == 0 }
+
     var sheetName: String { id }
 
     /// 某阶段的 sheet 文件名
@@ -150,12 +186,27 @@ struct PetBreed: Identifiable, Hashable, Codable, Sendable {
 
     // MARK: - 注册表
 
-    static let cat = PetBreed(id: "cat", nameKey: "breed.cat",
-                              colorCount: 4, footPadding: 5,
-                              englishNoun: "cat", chineseNoun: "小猫")
-    static let dog = PetBreed(id: "dog", nameKey: "breed.dog",
-                              colorCount: 4, footPadding: 3,
-                              englishNoun: "dog", chineseNoun: "小狗")
+    /// 猫：均衡型，开局可选
+    static let cat = PetBreed(
+        id: "cat", nameKey: "breed.cat",
+        colorCount: 4, footPadding: 5,
+        englishNoun: "cat", chineseNoun: "小猫",
+        price: 0, traitKey: "trait.balanced",
+        moodCycleHours: 18, hygieneCycleHours: 72, goldMultiplier: 1.00)
+
+    /// 狗：黏人型，开局可选。心情掉得快，但金币加成补回来
+    static let dog = PetBreed(
+        id: "dog", nameKey: "breed.dog",
+        colorCount: 4, footPadding: 3,
+        englishNoun: "dog", chineseNoun: "小狗",
+        price: 0, traitKey: "trait.clingy",
+        moodCycleHours: 14, hygieneCycleHours: 72, goldMultiplier: 1.05)
+
+    /// 开局可选的品种（免费）
+    static var starters: [PetBreed] { all.filter(\.isStarter) }
+
+    /// 商店里能买的品种
+    static var purchasable: [PetBreed] { all.filter { !$0.isStarter } }
 
     static let all: [PetBreed] = [.cat, .dog]
 

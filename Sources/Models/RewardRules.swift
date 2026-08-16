@@ -82,7 +82,10 @@ struct OfflineCareReward: RewardRule {
 
         let rate = Self.achievementRate(satiety: ctx.avgSatiety, mood: ctx.avgMood)
         let boost = ctx.wallet.boostMultiplier(at: ctx.now)
-        let want = Double(ctx.pet.stage.dailyCap) * rate * boost
+        // 品种金币加成 —— 用来抵消心情周期的优劣，让高频玩家
+        // 无论选哪只收益都接近（见 PetBreed.goldMultiplier）
+        let breedBonus = ctx.pet.breed.goldMultiplier
+        let want = Double(ctx.pet.stage.dailyCap) * rate * boost * breedBonus
         let coins = min(ctx.remainingCap, Int(want.rounded()))
         guard coins > 0 else { return nil }
 

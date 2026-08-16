@@ -31,11 +31,33 @@ struct PetWallet: Codable, Equatable {
     /// 已领取的一次性奖励 ID
     var claimedRewards: Set<String>
 
+    /// 已拥有的品种 ID。
+    ///
+    /// 开局选的那只自动进来。买新品种要先付钱，之后可以随时免费切换 ——
+    /// 「买」是一次性解锁，不是消耗品。
+    var ownedBreeds: Set<String>
+
+    /// 是否已完成开局（选宠物 + 起名）。
+    ///
+    /// 存在钱包而非 PetState —— 重置宠物不该让人重走开局流程，
+    /// 而且它和「送启动资金」这件事是同一个语义。
+    var hasCompletedOnboarding: Bool
+
     /// 启动资金。
     ///
-    /// 不给的话新玩家第一顿只能吃剩饭（30% 饱食），第一印象是「穷」。
-    /// 100 枚够买两三份普通粮，让第一次喂食就有得选。
-    static let initialCoins = 100
+    /// 5000 枚，其中 4000 用于买第一只宠物，余 1000 起步。
+    ///
+    /// 1000 枚够买 28 份普通粮（35/份）或 6 份罐头 ——
+    /// 有「刚好够用但要省着花」的紧张感，又不至于卡死（剩饭永久免费）。
+    ///
+    /// 定价推导见 docs/07-shop.md。
+    static let initialCoins = 5000
+
+    /// 第一只宠物的价格。
+    ///
+    /// 从启动资金里扣，让「选宠物」这件事有重量感 ——
+    /// 直接送一只的话，开局的选择缺少代价。
+    static let starterPrice = 4000
 
     init(now: Date = Date()) {
         coins = Self.initialCoins
@@ -45,6 +67,30 @@ struct PetWallet: Codable, Equatable {
         todayEarned = 0
         lastEarnDate = now
         claimedRewards = []
+        ownedBreeds = []
+        hasCompletedOnboarding = false
+    }
+
+    // MARK: - 品种拥有
+
+    func owns(_ breed: PetBreed) -> Bool {
+        // 开局品种只要买过就算拥有；其余看解锁记录
+        ownedBreeds.contains(breed.id)
+    }
+
+    /// 能否买得起某个品种
+    func canAfford(_ breed: PetBreed) -> Bool {
+        coins >= breed.price
+    }
+
+    /// 购买品种。返回是否成功。
+    @discardableResult
+    mutating func purchase(_ breed: PetBreed) -> Bool {
+        guard !owns(breed) else { return true }   // 已拥有，幂等
+        guard coins >= breed.price else { return false }
+        coins -= breed.price
+        ownedBreeds.insert(breed.id)
+        return true
     }
 
     // MARK: - 每日额度
@@ -97,6 +143,7 @@ struct PetWallet: Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case coins, lastCollectedAt, boostUntil, totalEarned
         case todayEarned, lastEarnDate, claimedRewards
+        case ownedBreeds, hasCompletedOnboarding
     }
 
     /// 所有字段都用 decodeIfPresent —— 将来加字段时旧存档不会解码失败。
@@ -109,5 +156,13 @@ struct PetWallet: Codable, Equatable {
         todayEarned = try c.decodeIfPresent(Int.self, forKey: .todayEarned) ?? 0
         lastEarnDate = try c.decodeIfPresent(Date.self, forKey: .lastEarnDate) ?? .distantPast
         claimedRewards = try c.decodeIfPresent(Set<String>.self, forKey: .claimedRewards) ?? []
+        ownedBreeds = try c.decodeIfPresent(Set<String>.self, forKey: .ownedBreeds) ?? []
+        // 旧存档没有这个字段。如果已经有宠物在养（钱包被用过），
+        // 视为已完成开局，不该把老用户拉回选宠界面。
+        if let done = try c.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) {
+            hasCompletedOnboarding = done
+        } else {
+            hasCompletedOnboarding = (totalEarned > 0 || !claimedRewards.isEmpty)
+        }
     }
 }

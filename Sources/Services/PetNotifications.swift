@@ -59,7 +59,8 @@ enum PetNotifications {
                  fireAt: hungryAt, now: now)
 
         // 心情：80% 处
-        let boredAt = pet.lastPlayedAt.addingTimeInterval(PetState.Decay.mood * 0.8)
+        let boredAt = pet.lastPlayedAt.addingTimeInterval(
+            PetState.Decay.mood(for: pet.breed) * 0.8)
         schedule(id: moodID,
                  titleKey: "notify.bored.title",
                  bodyKey: "notify.bored.body",
