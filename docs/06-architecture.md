@@ -17,7 +17,7 @@ App/            组装
 Core → Models → {Scenes, Services} → Views → App
 ```
 
-`Models` 不依赖任何上层，所以能脱离 UI 测试 —— 117 个测试里绝大多数在这一层。
+`Models` 不依赖任何上层，所以能脱离 UI 测试 —— 144 个测试里绝大多数在这一层。
 
 ### 由脚本强制，不靠自觉
 
@@ -87,7 +87,11 @@ public，是全方案的一半成本、80% 的实际收益）。上面修循环�
 | 抽象 | 解决什么 | 加东西时怎么做 |
 |---|---|---|
 | `RewardRule` 协议 + `RewardEngine` | 加奖励规则不改核心逻辑 | 实现协议 + 注册进 `RewardEngine.default` |
+| `CoinLedger` + `CoinReason` | **金币变动的唯一入口**，账目可自检、流水可追溯 | 加玩法时加一个 `CoinReason` case，编译器强迫你归类收/支与额度 |
 | `AchievementRule` | 19 条成就是**同一类型的 19 个实例**，数据驱动 | 表里加一条，有 `streak()`/`counted()` 两个构造辅助 |
+| `PetPersistence` | 存档方式可替换（文件/内存），测试不碰磁盘 | 实现协议，注入 `PetStore(storage:)` |
+| `PetReminderScheduling` | 提醒实现可替换，测试不排真通知 | 实现协议，注入 `PetStore(reminders:)` |
+| `BreedComponents` | 品种立绘/属性面板/毛色选择三处共用 | 直接用 `BreedPortrait` / `BreedStatPanel` / `CoatPicker` |
 | `InteractionEffect`(Models) | 互动对状态的作用，纯数据 | 表里加一条 |
 | `Interaction`(Views) | 互动的 UI 配置（图标/文案/延迟） | 表里加一条 + 动画 + 本地化 |
 | `StatDimension` 表 | HUD 状态条从手写展开改成遍历 | 表里加一条 |
@@ -156,12 +160,14 @@ public，是全方案的一半成本、80% 的实际收益）。上面修循环�
 
 ## 测试策略
 
-117 个测试，分布：
+144 个测试，分布：
 
 | 文件 | 覆盖 |
 |---|---|
 | `EconomyTests` | 收益公式、额度、按量计价、平衡回归 |
+| `CoinLedgerTests` | **账目恒等式**、原因分类、流水、旧存档迁移 |
 | `PetStoreTests` | 互动通路、存档、结算、开局与商店 |
+| `PetPersistenceTests` | 落盘、加载、内存与文件实现行为一致 |
 | `ConfigTests` | 阶段/品种参数、**品种支配检验**、Fixture 自测 |
 | `GeometryTests` | 2.5D 地板、精灵表帧布局 |
 | `PetStateTests` | 衰减、作息、阈值一致性 |

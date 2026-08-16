@@ -56,6 +56,13 @@ protocol RewardRule {
     /// 是否计入每日额度。只有看家收益算，上线奖励和成就不算。
     var countsTowardDailyCap: Bool { get }
 
+    /// 这条规则发钱时记什么原因。
+    ///
+    /// 由规则自己声明，而不是让 `PetStore` 按「占不占额度」反推 ——
+    /// 之前上线奖励和成就被合并成一次 `recordBonus`，
+    /// 账本里分不清那笔钱是签到还是成就。
+    var coinReason: CoinReason { get }
+
     /// 返回 nil = 本次不触发
     func evaluate(_ ctx: RewardContext) -> RewardOutcome?
 }
@@ -63,6 +70,9 @@ protocol RewardRule {
 extension RewardRule {
     /// 默认不占额度 —— 只有 `OfflineCareReward` 覆写成 true。
     var countsTowardDailyCap: Bool { false }
+
+    /// 默认按成就记账 —— 规则表里绝大多数是成就。
+    var coinReason: CoinReason { .achievement }
 }
 
 /// 一次结算的结果。
@@ -76,6 +86,12 @@ struct RewardSettlement {
     let newlyClaimed: [String]
     /// 要展示的消息（通常只展示第一条）
     let messages: [(key: String, args: [CVarArg])]
+
+    /// 分项收入：`(原因, 金额, 规则 id)`。
+    ///
+    /// 让 `PetStore` 能逐笔入账，账本里就能区分签到 / 成就 / 看家。
+    /// `totalCoins` 与 `cappedCoins` 保留 —— UI 只关心总数。
+    let payouts: [(reason: CoinReason, coins: Int, ruleID: String)]
 
     var isEmpty: Bool { totalCoins == 0 && messages.isEmpty }
 }
@@ -96,6 +112,7 @@ struct RewardEngine {
         var capped = 0
         var claimed: [String] = []
         var messages: [(key: String, args: [CVarArg])] = []
+        var payouts: [(reason: CoinReason, coins: Int, ruleID: String)] = []
 
         for rule in rules {
             // 一次性奖励已领过就跳过
@@ -104,6 +121,9 @@ struct RewardEngine {
 
             total += out.coins
             if rule.countsTowardDailyCap { capped += out.coins }
+            if out.coins > 0 {
+                payouts.append((rule.coinReason, out.coins, rule.id))
+            }
             if rule.isOneTime { claimed.append(rule.id) }
             if !out.messageKey.isEmpty {
                 messages.append((out.messageKey, out.messageArgs))
@@ -113,7 +133,8 @@ struct RewardEngine {
         return RewardSettlement(totalCoins: total,
                                 cappedCoins: capped,
                                 newlyClaimed: claimed,
-                                messages: messages)
+                                messages: messages,
+                                payouts: payouts)
     }
 
     /// 计算状态在离线期间的平均值。

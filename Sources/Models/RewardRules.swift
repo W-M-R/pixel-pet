@@ -17,6 +17,8 @@ struct CheckInReward: RewardRule {
     static let minIntervalHours: Double = 5
     static let coins = 10
 
+    var coinReason: CoinReason { .loginBonus }
+
     func evaluate(_ ctx: RewardContext) -> RewardOutcome? {
         guard ctx.offlineHours >= Self.minIntervalHours else { return nil }
         return RewardOutcome(coins: Self.coins, messageKey: "")   // 不单独说话
@@ -48,6 +50,7 @@ struct OfflineCareReward: RewardRule {
     let isOneTime = false
     /// 唯一占额度的规则
     let countsTowardDailyCap = true
+    var coinReason: CoinReason { .offlineCare }
 
     /// 达成率区间。
     ///

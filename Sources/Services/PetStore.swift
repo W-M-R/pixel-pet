@@ -112,10 +112,16 @@ final class PetStore {
         let result = RewardEngine.default.settle(ctx)
         guard !result.isEmpty else { return nil }
 
-        // 看家收益走 recordEarning（累加今日额度、处理跨日重置）；
-        // 上线奖励与成就不占额度，走 recordBonus。
-        wallet.recordEarning(result.cappedCoins, at: now)
-        wallet.recordBonus(result.totalCoins - result.cappedCoins)
+        // 逐笔入账 —— 账本里能分清签到 / 成就 / 看家。
+        // 之前是「看家一笔 + 其余合并一笔」，排查时分不出后者的来源。
+        for p in result.payouts {
+            if p.reason.countsTowardDailyCap {
+                // 占额度的要走 recordEarning：它额外维护 todayEarned 与跨日重置
+                wallet.recordEarning(p.coins, at: now)
+            } else {
+                wallet.recordBonus(p.coins, reason: p.reason, at: now, note: p.ruleID)
+            }
+        }
         for id in result.newlyClaimed { wallet.claimedRewards.insert(id) }
         wallet.lastCollectedAt = now
         persist()
@@ -169,8 +175,15 @@ final class PetStore {
         // 之前是先扣钱后读饱食，算出来的价基准是错的。
         let before = pet.satiety(at: now)
         let price = food.cost(currentSatiety: before)
-        guard wallet.coins >= price else { return false }
-        wallet.coins -= price
+
+        // 剩饭是 0 价，不记流水（`apply` 只接受正数）。
+        // 写成显式的 if 而不是 `spend(...) || price == 0` ——
+        // 后者读起来像「花钱失败也放过」，容易被误改成真的绕过扣钱。
+        if price > 0 {
+            guard wallet.spend(price, reason: .food, at: now, note: food.id) else {
+                return false
+            }
+        }
 
         // 饱食：加到当前值并封顶。
         // 用「反推 lastFedAt」而不是存数值 —— 状态必须保持时间戳驱动。
@@ -288,9 +301,8 @@ final class PetStore {
                             name: String) -> Bool {
         let breed = PetBreed.byID(breedID)
         guard breed.isStarter else { return false }   // 开局只能选免费品种
-        guard wallet.coins >= PetWallet.starterPrice else { return false }
-
-        wallet.coins -= PetWallet.starterPrice
+        guard wallet.spend(PetWallet.starterPrice, reason: .starterPet,
+                           note: breed.id) else { return false }
         wallet.ownedBreeds.insert(breed.id)
         wallet.hasCompletedOnboarding = true
 

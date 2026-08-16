@@ -140,7 +140,7 @@ final class PetStoreTests: StoreTestCase {
         var p = store.pet
         p.lastFedAt = Date().addingTimeInterval(-100 * 3600)
         var w = store.wallet
-        w.coins = 0
+        w.debugSetCoins(0)
         store.debugSet(pet: p, wallet: w)
 
         XCTAssertFalse(store.feed(.driedFish), "钱不够应失败")
@@ -150,7 +150,7 @@ final class PetStoreTests: StoreTestCase {
     func testScrapsAlwaysAffordable() {
         let store = makeStore()
         var w = store.wallet
-        w.coins = 0
+        w.debugSetCoins(0)
         var p = store.pet
         p.lastFedAt = Date().addingTimeInterval(-100 * 3600)
         store.debugSet(pet: p, wallet: w)
@@ -198,7 +198,7 @@ final class PetStoreTests: StoreTestCase {
     func testWalletSurvivesPetReset() {
         let store = makeStore()
         var w = store.wallet
-        w.coins = 500
+        w.debugSetCoins(500)
         w.ownedBreeds.insert(PetBreed.dog.id)   // choose 要求已拥有
         store.debugSet(wallet: w)
         store.play()                      // 触发 persist
@@ -429,7 +429,7 @@ final class OnboardingStoreTests: StoreTestCase {
     func testOnboardingFailsWithoutCoins() {
         let store = makeStore()
         var w = store.wallet
-        w.coins = 100
+        w.debugSetCoins(100)
         store.debugSet(wallet: w)
 
         XCTAssertFalse(store.completeOnboarding(breedID: PetBreed.cat.id,
@@ -472,7 +472,7 @@ final class OnboardingStoreTests: StoreTestCase {
     /// 购买是幂等的 —— 重复买不该重复扣钱
     func testPurchaseIsIdempotent() {
         var w = PetWallet()
-        w.coins = 20000
+        w.debugSetCoins(20000)
         // 造一个付费品种来测（现有两个都是 starter，price=0）
         let paid = PetBreed(id: "test", nameKey: "x", colorCount: 4,
                             footPadding: 4, englishNoun: "t", chineseNoun: "测",
@@ -488,7 +488,7 @@ final class OnboardingStoreTests: StoreTestCase {
     /// 钱不够买不了
     func testPurchaseFailsWhenBroke() {
         var w = PetWallet()
-        w.coins = 500
+        w.debugSetCoins(500)
         let paid = PetBreed(id: "test", nameKey: "x", colorCount: 4,
                             footPadding: 4, englishNoun: "t", chineseNoun: "测",
                             price: 9000, traitKey: "x",

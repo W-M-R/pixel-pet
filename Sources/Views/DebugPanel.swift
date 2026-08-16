@@ -55,6 +55,21 @@ struct DebugPanel: View {
                         }
                     }
                 }
+                Section("金币账本") {
+                    let l = store.wallet.ledger
+                    LabeledContent("余额") { Text(verbatim: "\(l.balance)") }
+                    LabeledContent("累计收入") { Text(verbatim: "\(l.totalIn)") }
+                    LabeledContent("累计支出") { Text(verbatim: "\(l.totalOut)") }
+                    LabeledContent("账目") {
+                        Text(verbatim: l.isBalanced
+                             ? "平"
+                             : "不平！\(l.totalIn) - \(l.totalOut) ≠ \(l.balance)")
+                            .foregroundStyle(l.isBalanced ? Color.secondary : Color.red)
+                    }
+                    NavigationLink("流水（最近 \(l.recent.count) 笔）") {
+                        CoinTraceView(entries: l.recent)
+                    }
+                }
                 Section("房间") {
                     Text("长按家具可拖动位置")
                         .font(.footnote).foregroundStyle(.secondary)
@@ -96,3 +111,52 @@ struct DebugPanel: View {
 }
 
 #endif
+
+/// 金币流水（调试）。
+///
+/// 存在的理由很具体：用户问「为什么我有 10098 金币」时，
+/// 之前只能靠翻 claimedRewards 人肉推断。现在直接看这一页。
+struct CoinTraceView: View {
+    let entries: [CoinEntry]
+
+    var body: some View {
+        List {
+            if entries.isEmpty {
+                Text("暂无流水").foregroundStyle(.secondary)
+            }
+            // 倒序 —— 最近的在最上面
+            ForEach(Array(entries.enumerated().reversed()), id: \.offset) { _, e in
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text(verbatim: label(e.reason))
+                        Spacer()
+                        Text(verbatim: e.signed > 0 ? "+\(e.amount)" : "-\(e.amount)")
+                            .foregroundStyle(e.reason.isIncome ? .green : .red)
+                            .monospacedDigit()
+                    }
+                    HStack(spacing: 6) {
+                        Text(e.at, format: .dateTime.month().day().hour().minute())
+                        if let n = e.note { Text(verbatim: n) }
+                        Spacer()
+                        Text(verbatim: "余 \(e.balance)").monospacedDigit()
+                    }
+                    .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .navigationTitle("金币流水")
+    }
+
+    private func label(_ r: CoinReason) -> String {
+        switch r {
+        case .offlineCare:    return "看家收益"
+        case .loginBonus:     return "上线奖励"
+        case .achievement:    return "成就"
+        case .initialGrant:   return "启动资金"
+        case .food:           return "买食物"
+        case .starterPet:     return "首只宠物"
+        case .breedPurchase:  return "买品种"
+        case .debugGrant:     return "调试发钱"
+        }
+    }
+}

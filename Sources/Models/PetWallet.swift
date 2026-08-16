@@ -6,7 +6,15 @@ import Foundation
 /// 两者生命周期不同。也让 `PetState` 已经很复杂的解码兼容逻辑不再变复杂。
 struct PetWallet: Codable, Equatable {
 
-    var coins: Int
+    /// 金币账本 —— **所有余额变动的唯一入口**。
+    ///
+    /// 之前 `coins` 是裸 `var`，收入走方法但支出三处裸写 `coins -=`。
+    /// 现在收支都经过 `ledger.apply(_:reason:)`，账目可自检、流水可追溯。
+    /// 详见 `CoinLedger` 的类型注释。
+    private(set) var ledger: CoinLedger
+
+    /// 当前金币。只读 —— 要改就得说明原因，见 `spend` / `earn`。
+    var coins: Int { ledger.balance }
 
     /// 上次结算时间。离线收益与上线奖励都以它为基准。
     var lastCollectedAt: Date
@@ -60,7 +68,7 @@ struct PetWallet: Codable, Equatable {
     static let starterPrice = 4000
 
     init(now: Date = Date()) {
-        coins = Self.initialCoins
+        ledger = CoinLedger(initial: Self.initialCoins, at: now)
         lastCollectedAt = now
         boostUntil = nil
         totalEarned = 0
@@ -80,15 +88,20 @@ struct PetWallet: Codable, Equatable {
 
     /// 能否买得起某个品种
     func canAfford(_ breed: PetBreed) -> Bool {
-        coins >= breed.price
+        ledger.canAfford(breed.price)
     }
 
     /// 购买品种。返回是否成功。
     @discardableResult
-    mutating func purchase(_ breed: PetBreed) -> Bool {
+    mutating func purchase(_ breed: PetBreed, at now: Date = Date()) -> Bool {
         guard !owns(breed) else { return true }   // 已拥有，幂等
-        guard coins >= breed.price else { return false }
-        coins -= breed.price
+
+        // 免费品种（`isStarter`，price == 0）直接解锁：
+        // `spend` 只接受正数，0 价会被当成非法调用拒掉。
+        if breed.price > 0 {
+            guard spend(breed.price, reason: .breedPurchase,
+                        at: now, note: breed.id) else { return false }
+        }
         ownedBreeds.insert(breed.id)
         return true
     }
@@ -114,15 +127,55 @@ struct PetWallet: Codable, Equatable {
         }
         todayEarned += amount
         lastEarnDate = now
-        coins += amount
-        totalEarned += amount
+        earn(amount, reason: .offlineCare, at: now)
     }
 
     /// 记一笔不占额度的收入（上线奖励、成就）
-    mutating func recordBonus(_ amount: Int) {
-        guard amount > 0 else { return }
-        coins += amount
-        totalEarned += amount
+    mutating func recordBonus(_ amount: Int,
+                              reason: CoinReason = .achievement,
+                              at now: Date = Date(),
+                              note: String? = nil) {
+        guard !reason.countsTowardDailyCap else {
+            assertionFailure("占额度的收入要走 recordEarning，否则 todayEarned 不同步")
+            return
+        }
+        earn(amount, reason: reason, at: now, note: note)
+    }
+
+    // MARK: - 收支统一入口
+
+    /// 记一笔收入。
+    ///
+    /// `totalEarned` 在这里同步 —— 它是成就的判定依据，
+    /// 语义是「累计赚了多少」，所以只跟收入走，不含 `initialGrant` 之外的调试发钱。
+    mutating func earn(_ amount: Int,
+                       reason: CoinReason,
+                       at now: Date = Date(),
+                       note: String? = nil) {
+        guard reason.isIncome else {
+            assertionFailure("\(reason) 是支出，该调 spend")
+            return
+        }
+        guard ledger.apply(amount, reason: reason, at: now, note: note) else { return }
+        if reason != .initialGrant && reason != .debugGrant {
+            totalEarned += amount
+        }
+    }
+
+    /// 记一笔支出。返回是否成功（余额不足会失败且不扣钱）。
+    ///
+    /// **所有花钱的地方都必须走这里** —— 之前喂食和买首宠是裸写
+    /// `wallet.coins -= price`，绕过了任何记账。
+    @discardableResult
+    mutating func spend(_ amount: Int,
+                        reason: CoinReason,
+                        at now: Date = Date(),
+                        note: String? = nil) -> Bool {
+        guard !reason.isIncome else {
+            assertionFailure("\(reason) 是收入，该调 earn")
+            return false
+        }
+        return ledger.apply(amount, reason: reason, at: now, note: note)
     }
 
     // MARK: - buff
@@ -144,15 +197,23 @@ struct PetWallet: Codable, Equatable {
         case coins, lastCollectedAt, boostUntil, totalEarned
         case todayEarned, lastEarnDate, claimedRewards
         case ownedBreeds, hasCompletedOnboarding
+        case ledger
     }
 
     /// 所有字段都用 decodeIfPresent —— 将来加字段时旧存档不会解码失败。
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        coins = try c.decodeIfPresent(Int.self, forKey: .coins) ?? Self.initialCoins
+        totalEarned = try c.decodeIfPresent(Int.self, forKey: .totalEarned) ?? 0
+        if let saved = try c.decodeIfPresent(CoinLedger.self, forKey: .ledger) {
+            ledger = saved
+        } else {
+            // 旧存档只有裸 coins，没有账本。用它作期初余额重建 ——
+            // 历史流水无从恢复，但余额必须一分不差（不能让人凭空少钱）。
+            let legacy = try c.decodeIfPresent(Int.self, forKey: .coins) ?? Self.initialCoins
+            ledger = CoinLedger(initial: legacy, at: Date())
+        }
         lastCollectedAt = try c.decodeIfPresent(Date.self, forKey: .lastCollectedAt) ?? Date()
         boostUntil = try c.decodeIfPresent(Date.self, forKey: .boostUntil)
-        totalEarned = try c.decodeIfPresent(Int.self, forKey: .totalEarned) ?? 0
         todayEarned = try c.decodeIfPresent(Int.self, forKey: .todayEarned) ?? 0
         lastEarnDate = try c.decodeIfPresent(Date.self, forKey: .lastEarnDate) ?? .distantPast
         claimedRewards = try c.decodeIfPresent(Set<String>.self, forKey: .claimedRewards) ?? []
@@ -165,4 +226,34 @@ struct PetWallet: Codable, Equatable {
             hasCompletedOnboarding = (totalEarned > 0 || !claimedRewards.isEmpty)
         }
     }
+
+    /// 手写编码。
+    ///
+    /// `coins` 现在是计算属性，合成的 encode 不会写它。但仍要落盘 ——
+    /// 一是万一要降级到旧版本，二是直接看 json 排查时不用去 ledger 里翻。
+    /// 解码时 `ledger` 优先，`coins` 只在没有账本的旧存档里当期初余额。
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(ledger, forKey: .ledger)
+        try c.encode(coins, forKey: .coins)          // 冗余，供降级/排查
+        try c.encode(lastCollectedAt, forKey: .lastCollectedAt)
+        try c.encodeIfPresent(boostUntil, forKey: .boostUntil)
+        try c.encode(totalEarned, forKey: .totalEarned)
+        try c.encode(todayEarned, forKey: .todayEarned)
+        try c.encode(lastEarnDate, forKey: .lastEarnDate)
+        try c.encode(claimedRewards, forKey: .claimedRewards)
+        try c.encode(ownedBreeds, forKey: .ownedBreeds)
+        try c.encode(hasCompletedOnboarding, forKey: .hasCompletedOnboarding)
+    }
 }
+
+#if DEBUG
+extension PetWallet {
+    /// 直接设定余额。**仅测试/调试用**，走账本记一笔 `debugGrant`。
+    ///
+    /// 生产代码要花钱/发钱必须走 `spend` / `earn` —— 那里有原因和流水。
+    mutating func debugSetCoins(_ amount: Int, at now: Date = Date()) {
+        ledger.debugSetBalance(amount, at: now)
+    }
+}
+#endif
