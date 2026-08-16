@@ -91,15 +91,15 @@ struct AchievementsView: View {
         let progress = store.achievementProgress(rule)
 
         return HStack(spacing: Pixel.u(2)) {
-            // 已达成打勾，未达成留空框 —— 用方块而非 SF Symbol 的圆圈
+            // 已达成打勾，未达成留空框。
+            // 方块而非圆圈（SF Symbol 那种）；对勾用自绘图标而非 "✓"
+            // 字符 —— 字符要靠字体里有这个字形，缺了就是豆腐块或问号。
             ZStack {
                 Rectangle()
                     .fill(claimed ? Pixel.satiety.color : Pixel.slotEmpty.color)
-                    .frame(width: Pixel.u(3), height: Pixel.u(3))
+                    .frame(width: Pixel.u(4), height: Pixel.u(4))
                 if claimed {
-                    Text(verbatim: "✓")
-                        .font(Pixel.mono(Pixel.labelSize, .bold))
-                        .foregroundStyle(Pixel.panel.color)
+                    PixelIconView(icon: .check, size: Pixel.u(3.5))
                 }
             }
 

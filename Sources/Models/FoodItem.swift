@@ -7,7 +7,6 @@ import Foundation
 struct FoodItem: Identifiable, Hashable {
 
     let id: String
-    let emoji: String
     let nameKey: String
     /// 附加效果的固定价（心情加成、buff）。
     ///
@@ -86,13 +85,13 @@ struct FoodItem: Identifiable, Hashable {
     ///
     /// 论文里这叫 weak static engine，专门用来防 converter engine 的死锁。
     static let scraps = FoodItem(
-        id: "scraps", emoji: "🥣", nameKey: "food.scraps",
+        id: "scraps", nameKey: "food.scraps",
         extraPrice: 0, minPrice: 0, isFree: true,
         satietyRestore: 0.30, moodBonus: 0, grantsBoost: false)
 
     /// 日常主力。空腹价 35（0.70 × 10 × 5），无附加效果。
     static let kibble = FoodItem(
-        id: "kibble", emoji: "🍚", nameKey: "food.kibble",
+        id: "kibble", nameKey: "food.kibble",
         extraPrice: 0, minPrice: 2, isFree: false,
         satietyRestore: 0.70, moodBonus: 0, grantsBoost: false)
 
@@ -101,7 +100,7 @@ struct FoodItem: Identifiable, Hashable {
     /// 心情 +10% 的价值和饱食无关，所以那 100 枚是固定的 ——
     /// 满饱时吃罐头仍要 100 枚，不会变成白送 buff。
     static let can = FoodItem(
-        id: "can", emoji: "🥫", nameKey: "food.can",
+        id: "can", nameKey: "food.can",
         extraPrice: 100, minPrice: 100, isFree: false,
         satietyRestore: 1.0, moodBonus: 0.10, grantsBoost: false)
 
@@ -111,7 +110,7 @@ struct FoodItem: Identifiable, Hashable {
     /// 都会被封顶吃掉（实测多赚 +0）。抬达成率则在 2-4 次/天立刻生效，
     /// 帮「没空频繁开」的玩家追进度，而开得很勤的人本来就领满、无额外收益。
     static let driedFish = FoodItem(
-        id: "dried_fish", emoji: "🐟", nameKey: "food.dried_fish",
+        id: "dried_fish", nameKey: "food.dried_fish",
         extraPrice: 200, minPrice: 200, isFree: false,
         satietyRestore: 1.0, moodBonus: 0.25, grantsBoost: true)
 

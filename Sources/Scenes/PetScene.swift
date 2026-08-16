@@ -33,6 +33,7 @@ final class PetScene: SKScene {
     private var sleepSheet: SKTexture?
     private var roomSheet: SKTexture?
     private var emoteSheet: SKTexture?
+    private var iconSheet: SKTexture?
     private var pet: SKSpriteNode!
     private var shadow: SKShapeNode!
     /// 气泡层。实现在 BubbleLayer —— 它通过 anchor 闭包取位置，
@@ -161,6 +162,7 @@ final class PetScene: SKScene {
         loadSheets()
         roomSheet = RoomSpriteSheet.loadSheet(named: "house_objects")
         emoteSheet = RoomSpriteSheet.loadSheet(named: "emotes")
+        iconSheet = RoomSpriteSheet.loadSheet(named: "icons")
 
         buildRoom()
 
@@ -191,6 +193,7 @@ final class PetScene: SKScene {
             parent: self,
             unit: pixelScale,
             emoteSheet: emoteSheet,
+            iconSheet: iconSheet,
             anchor: { [weak self] in
                 guard let self, self.pet != nil else { return .zero }
                 return CGPoint(x: self.pet.position.x, y: self.petFeetY)
@@ -501,7 +504,9 @@ final class PetScene: SKScene {
         pet.removeAction(forKey: "anim")
         applyDepthScale()
         dropFoodBowl()
-        showEmojiBubble("🍖")
+        // 像素肉图标（icons.png 第 0 格）。原来是 🍖 emoji ——
+        // emoji 字形随 iOS 版本变，缺字体时会渲染成问号。
+        bubbles?.uiIcon(0)
         applyEatAnimation { [weak self] in
             guard let self else { return }
             self.foodNode?.run(.sequence([.fadeOut(withDuration: 0.2), .removeFromParent()]))
@@ -656,7 +661,6 @@ final class PetScene: SKScene {
         bubbles?.emote(emote)
     }
 
-    private func showEmojiBubble(_ text: String) { bubbles?.emoji(text) }
 
     // MARK: - 触摸
 

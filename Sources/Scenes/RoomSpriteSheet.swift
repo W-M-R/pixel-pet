@@ -122,6 +122,29 @@ enum RoomSpriteSheet {
 
     // MARK: - 加载
 
+    /// 从自绘的 UI 图标 sheet（`Assets/ui/icons.png`）取一格。
+    ///
+    /// **为什么 Scenes 层要自己做这件事**：`PixelIcon` 住在 Views 层，
+    /// 而 Scenes 不得引用 Views（见 tools/check_layers.sh）。
+    /// 所以这里按索引取图，索引含义由 `PixelIcon` 的 case 顺序决定 ——
+    /// 两处都由 `tools/make_ui_icons.py` 的 ORDER 定义，加图标只能追加到末尾。
+    ///
+    /// 用它替掉了喂食气泡原来的 🍖 emoji：emoji 字形随 iOS 版本变，
+    /// 缺字体时还会渲染成问号。
+    static func uiIconTexture(from sheet: SKTexture, index: Int) -> SKTexture? {
+        let cell: CGFloat = 16
+        let sheetW = sheet.size().width
+        let sheetH = sheet.size().height
+        guard sheetW > 0, sheetH > 0 else { return nil }
+        let x = CGFloat(index) * cell
+        guard x + cell <= sheetW + 0.5 else { return nil }
+        let rect = CGRect(x: x / sheetW, y: 0,
+                          width: cell / sheetW, height: cell / sheetH)
+        let tex = SKTexture(rect: rect, in: sheet)
+        tex.filteringMode = .nearest
+        return tex
+    }
+
     static func loadSheet(named name: String) -> SKTexture? {
         if let url = Bundle.main.url(forResource: name, withExtension: "png"),
            let image = UIImage(contentsOfFile: url.path) {

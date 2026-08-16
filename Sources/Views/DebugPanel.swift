@@ -62,7 +62,7 @@ struct DebugPanel: View {
                     LabeledContent("账目") {
                         Text(verbatim: l.isBalanced
                              ? "平"
-                             : "不平！\(l.totalIn) - \(l.totalOut) ≠ \(l.balance)")
+                             : "不平！\(l.totalIn) - \(l.totalOut) != \(l.balance)")
                             .foregroundStyle(l.isBalanced ? Color.secondary : Color.red)
                     }
                     NavigationLink("流水（最近 \(l.recent.count) 笔）") {

@@ -22,6 +22,8 @@ final class BubbleLayer {
     private let unit: CGFloat
     /// emote 图标 sheet
     private let emoteSheet: SKTexture?
+    /// 自绘 UI 图标 sheet。emotes 那套没有食物/球/浴缸这类具体道具。
+    private let iconSheet: SKTexture?
 
     /// 气泡锚点（通常是宠物脚底），每帧重新取。
     ///
@@ -41,11 +43,13 @@ final class BubbleLayer {
     init(parent: SKNode,
          unit: CGFloat,
          emoteSheet: SKTexture?,
+         iconSheet: SKTexture? = nil,
          anchor: @escaping () -> CGPoint,
          sceneWidth: @escaping () -> CGFloat) {
         self.parent = parent
         self.unit = unit
         self.emoteSheet = emoteSheet
+        self.iconSheet = iconSheet
         self.anchor = anchor
         self.sceneWidth = sceneWidth
     }
@@ -117,11 +121,12 @@ final class BubbleLayer {
 
     /// 像素 emote 图标。切图失败回退 emoji。
     func emote(_ emote: RoomSpriteSheet.Emote) {
+        // 取不到就什么都不显示。**不回退 emoji** ——
+        // emoji 字形随 iOS 版本变、缺字体时是问号，
+        // 而且渐变高光会把像素观感压掉。宁可没气泡。
         guard let emoteSheet,
-              let tex = RoomSpriteSheet.emoteTexture(from: emoteSheet, emote) else {
-            self.emoji(Self.fallbackEmoji(for: emote))
-            return
-        }
+              let tex = RoomSpriteSheet.emoteTexture(from: emoteSheet, emote)
+        else { return }
         let sprite = SKSpriteNode(texture: tex)
         sprite.texture?.filteringMode = .nearest
         sprite.setScale(unit * 0.9)
@@ -131,15 +136,24 @@ final class BubbleLayer {
         present(sprite, hold: 1.1, fadeIn: 0.15, fadeOut: 0.3, scaleIn: false)
     }
 
-    /// 裸 emoji 气泡。仅作 emote 的回退，以及没有对应像素图标时用。
-    func emoji(_ text: String) {
-        let label = SKLabelNode(text: text)
-        label.fontSize = 26
-        label.verticalAlignmentMode = .center
+    /// 自绘像素图标气泡。
+    ///
+    /// `index` 是 `Assets/ui/icons.png` 里的格位，与 Views 层 `PixelIcon`
+    /// 的 case 顺序一致（都源自 make_ui_icons.py 的 ORDER）。
+    /// 取不到就什么都不显示 —— **不回退 emoji**，宁可没有也不要
+    /// 一个渐变高光的 emoji 破坏像素观感，更不要问号。
+    func uiIcon(_ index: Int) {
+        guard let iconSheet,
+              let tex = RoomSpriteSheet.uiIconTexture(from: iconSheet, index: index)
+        else { return }
+        let sprite = SKSpriteNode(texture: tex)
+        sprite.texture?.filteringMode = .nearest
+        sprite.setScale(unit * 0.9)
         yOffset = unit * 23
         halfWidth = unit * 5
-        present(label, hold: 1.1, fadeIn: 0.15, fadeOut: 0.3, scaleIn: false)
+        present(sprite, hold: 1.1, fadeIn: 0.15, fadeOut: 0.3, scaleIn: false)
     }
+
 
     /// 宠物需求气泡。
     ///
@@ -151,8 +165,9 @@ final class BubbleLayer {
         if let e = need.emote {
             emote(e)
         } else {
-            // 这套 emotes 里没有食物图标，饿的时候只能用 emoji
-            emoji(need.emoji)
+            // emotes 那套没有食物图标，用自绘的 icons.png。
+            // 索引与 Views 层 PixelIcon 的 case 顺序一致。
+            uiIcon(need.iconIndex)
         }
     }
 
@@ -213,20 +228,5 @@ final class BubbleLayer {
             : .fadeOut(withDuration: fadeOut)
 
         n.run(.sequence([enter, .wait(forDuration: hold), exit, .removeFromParent()]))
-    }
-
-    /// emote 切图失败时的 emoji 回退表
-    static func fallbackEmoji(for emote: RoomSpriteSheet.Emote) -> String {
-        switch emote {
-        case .heart:      return "💗"
-        case .heartbreak: return "💔"
-        case .sleep:      return "💤"
-        case .music:      return "🎵"
-        case .droplet:    return "💧"
-        case .alert:      return "❗"
-        case .question:   return "❓"
-        case .ellipsis:   return "💭"
-        case .sweat:      return "💦"
-        }
     }
 }

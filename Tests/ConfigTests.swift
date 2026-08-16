@@ -412,3 +412,102 @@ final class ViewStructureTests: XCTestCase {
         XCTAssertTrue(offenders.isEmpty, "AI 残留：\(offenders)")
     }
 }
+
+/// 图标来源的静态检查。
+///
+/// **为什么需要**：SF Symbol 和 emoji 都依赖系统字体。字体缺失、
+/// 旧系统没有那个符号名、或模拟器字体没装全时，整个图标会渲染成
+/// 问号或豆腐块 —— 而这是像素风 app 里最扎眼的破图。
+///
+/// 项目的所有图标都来自自绘的 `Assets/ui/icons.png`
+/// （`tools/make_ui_icons.py`，形状原创、零授权负担）。
+final class IconSourceTests: XCTestCase {
+
+    private var sourcesRoot: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources")
+    }
+
+    /// 遍历 Sources 下所有 swift 文件的**代码部分**（剥掉注释）
+    private func eachCodeLine(_ body: (String, Int, String) -> Void) throws {
+        let files = FileManager.default.enumerator(at: sourcesRoot,
+                                                   includingPropertiesForKeys: nil)!
+        for case let url as URL in files where url.pathExtension == "swift" {
+            let src = try String(contentsOf: url, encoding: .utf8)
+            for (i, raw) in src.split(separator: "\n",
+                                      omittingEmptySubsequences: false).enumerated() {
+                // 剥注释 —— 注释里写"曾经用 SF Symbol"是有意保留的历史说明
+                let line = raw.range(of: "//").map { String(raw[raw.startIndex..<$0.lowerBound]) }
+                    ?? String(raw)
+                body(url.lastPathComponent, i + 1, line)
+            }
+        }
+    }
+
+    /// **不得使用 SF Symbol。**
+    func testNoSystemSymbols() throws {
+        var offenders: [String] = []
+        try eachCodeLine { file, line, code in
+            for api in ["systemName:", "systemImage:"] where code.contains(api) {
+                offenders.append("\(file):\(line) \(api)")
+            }
+        }
+        XCTAssertTrue(offenders.isEmpty,
+                      "用了 SF Symbol，缺字体会变问号：\(offenders)")
+    }
+
+    /// **代码里不得出现 emoji 或其它需要字体支持的符号字形。**
+    ///
+    /// 允许 CJK（台词、注释里的中文）和全角标点，
+    /// 拦的是 emoji、装饰符号、几何图形这些字形。
+    func testNoEmojiOrSymbolGlyphsInCode() throws {
+        var offenders: [String] = []
+        try eachCodeLine { file, line, code in
+            for ch in code {
+                let v = ch.unicodeScalars.first!.value
+                guard v > 0x2000 else { continue }            // ASCII 与常见空白
+                if (0x3000...0x9FFF).contains(v) { continue } // CJK
+                if (0xFF00...0xFFEF).contains(v) { continue } // 全角
+                offenders.append("\(file):\(line) \(ch) U+\(String(v, radix: 16))")
+            }
+        }
+        XCTAssertTrue(offenders.isEmpty,
+                      "代码里有依赖字体的符号字形：\(offenders)")
+    }
+
+    /// `PetNeed.iconIndex` 必须和 Views 层 `PixelIcon` 的顺序对得上。
+    ///
+    /// 两边是**同一张 sheet 的索引**，但因为分层规则不能互相引用
+    /// （Models 不得引用 Views），只能靠测试锁住。
+    func testNeedIconIndicesMatchPixelIcon() {
+        let expected: [PetNeed: PixelIcon] = [
+            .hungry: .meat, .bored: .ball, .dirty: .bath,
+            .sleepy: .sleep, .content: .heart,
+        ]
+        for (need, icon) in expected {
+            XCTAssertEqual(need.iconIndex, icon.rawValue,
+                           "\(need) 的图标索引对不上 \(icon)")
+        }
+        // 顺带确认 forNeed 也一致
+        for (need, icon) in expected {
+            XCTAssertEqual(PixelIcon.forNeed(need), icon)
+        }
+    }
+
+    /// sheet 里的图标数量要和枚举 case 数一致。
+    ///
+    /// 加图标时忘了跑 `make_ui_icons.py`（或反之）会错位 ——
+    /// 索引 13 本该是店铺，结果画出个爪印。
+    func testIconSheetMatchesEnumCount() throws {
+        let url = Bundle.main.url(forResource: PixelIcon.sheetName,
+                                  withExtension: "png")
+        let path = try XCTUnwrap(url, "找不到 icons.png")
+        let img = try XCTUnwrap(UIImage(contentsOfFile: path.path))
+        let cells = Int((img.size.width / PixelIcon.cell).rounded())
+        XCTAssertEqual(cells, PixelIcon.allCases.count,
+                       "sheet 有 \(cells) 格，但枚举有 \(PixelIcon.allCases.count) 个 case")
+        XCTAssertEqual(img.size.height, PixelIcon.cell)
+    }
+}

@@ -26,6 +26,8 @@ enum PixelIcon: Int, CaseIterable {
     case coins          // 钱堆（收益明细入口，区别于单枚 coin = 余额）
     case paw            // 爪印（宠物页入口）
     case shop           // 店铺（商店入口，不复用 coins 免得指向歧义）
+    case gear           // 齿轮（设置入口）
+    case check          // 对勾（选中标记）
 
     /// sheet 里的图标边长（源像素）
     static let cell: CGFloat = 16

@@ -42,8 +42,9 @@ struct LanguagePickerView: View {
             title.foregroundStyle(.primary)
             Spacer()
             if selected {
-                Image(systemName: "checkmark")
-                    .foregroundStyle(.tint)
+                // 自绘对勾。不用 SF Symbol `checkmark` ——
+                // 系统字体缺失时会渲染成问号。
+                PixelIconView(icon: .check, size: Pixel.u(4))
             }
         }
         .contentShape(Rectangle())

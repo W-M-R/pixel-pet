@@ -13,16 +13,22 @@ enum PetNeed: String, CaseIterable {
     case sleepy
     case content
 
-    /// ⚠️ 仅作 emote 切图失败时的回退。
-    /// UI 层已全部换成 `PixelIcon`（见 PixelIcon.forNeed），
-    /// 因为 emoji 的渐变高光会把像素感压掉。
-    var emoji: String {
+    /// 自绘图标 sheet（`Assets/ui/icons.png`）里的格位。
+    ///
+    /// **为什么是裸索引而不是 `PixelIcon`**：`PixelIcon` 住 Views 层，
+    /// 而 Models 不得引用 Views（见 tools/check_layers.sh）。
+    /// 两边的顺序都由 `tools/make_ui_icons.py` 的 ORDER 定义，
+    /// 由 `testNeedIconIndicesMatchPixelIcon` 断言一致。
+    ///
+    /// 曾经这里是 emoji 表 —— emoji 字形随 iOS 版本变，
+    /// 缺字体时渲染成问号，渐变高光也会把像素感压掉。
+    var iconIndex: Int {
         switch self {
-        case .hungry:  return "🍖"
-        case .bored:   return "🎾"
-        case .dirty:   return "🛁"
-        case .sleepy:  return "💤"
-        case .content: return "💗"
+        case .hungry:  return 0     // meat
+        case .bored:   return 1     // ball
+        case .dirty:   return 2     // bath
+        case .sleepy:  return 10    // sleep
+        case .content: return 8     // heart
         }
     }
 

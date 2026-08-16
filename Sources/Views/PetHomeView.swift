@@ -223,11 +223,10 @@ struct PetHomeView: View {
                 Button {
                     showSettings = true
                 } label: {
-                    // 齿轮暂时留 SF Symbol —— 自绘齿轮在 16px 下辨识度差，
-                    // 且它是系统级功能入口，用系统图标反而符合预期。
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 15))
-                        .foregroundStyle(Pixel.textDim.color)
+                    // 自绘齿轮。**不用 SF Symbol** —— 它依赖系统字体，
+                    // 缺字体时整个图标渲染成问号，而这是主页常驻入口。
+                    // 8 齿在 16px 下会糊成圆，所以画 4 齿 + 大孔。
+                    PixelIconView(icon: .gear, size: Pixel.u(5))
                 }
                 #if DEBUG
                 // 长按进调试面板 —— 保留时间快进能力，但不占主界面。

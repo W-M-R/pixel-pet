@@ -17,7 +17,7 @@ App/            组装
 Core → Models → {Scenes, Services} → Views → App
 ```
 
-`Models` 不依赖任何上层，所以能脱离 UI 测试 —— 145 个测试里绝大多数在这一层。
+`Models` 不依赖任何上层，所以能脱离 UI 测试 —— 149 个测试里绝大多数在这一层。
 
 ### 由脚本强制，不靠自觉
 
@@ -192,15 +192,46 @@ public，是全方案的一半成本、80% 的实际收益）。上面修循环�
 注入回归自测时没抓到 —— 因为注释里就写着「自带 NavigationStack」。
 剥掉注释再匹配才有效，和 `tools/check_layers.sh` 同一个坑。
 
+## 图标全部自绘
+
+**不用 SF Symbol，不用 emoji。** 两者都依赖系统字体 ——
+字体缺失、旧系统没有那个符号名、模拟器字体没装全时，
+整个图标会渲染成问号或豆腐块。像素风 app 里这种破图最扎眼。
+
+所有图标来自 `Assets/ui/icons.png`（16 格 × 16px），
+由 `tools/make_ui_icons.py` 以 ASCII 点阵自绘，
+形状原创、配色取自 `Pixel` 色板、零授权负担。
+
+清理掉的：
+- `Image(systemName: "gearshape.fill")` → 自绘齿轮（4 齿 + 大孔，
+  8 齿在 16px 下会糊成圆）
+- `Image(systemName: "checkmark")` → 自绘对勾（语言页）
+- `Text("✓")` → 同上（成就页）；字符也要字体里有那个字形
+- 喂食气泡的 `🍖` → `icons.png` 第 0 格（这条是活路径，每次喂食都冒）
+- `BubbleLayer.fallbackEmoji`（9 个）与 `PetNeed.emoji`（5 个）整表删除
+
+`≠` 也换成了 `!=` —— DEBUG-only 文本，但没必要为一个符号留例外。
+
+### 跨层的索引一致性
+
+`Scenes` 和 `Models` 都要用图标，但**都不能引用 Views 层的 `PixelIcon`**
+（分层规则）。所以它们用裸索引：`RoomSpriteSheet.uiIconTexture(index:)`、
+`PetNeed.iconIndex`。三处顺序都由 `make_ui_icons.py` 的 ORDER 定义，
+由 `IconSourceTests.testNeedIconIndicesMatchPixelIcon` 和
+`testIconSheetMatchesEnumCount` 锁住。
+
+**加图标只能追加到 ORDER 末尾** —— 中间插入会让所有后续索引错位。
+
 ## 测试策略
 
-145 个测试，分布：
+149 个测试，分布：
 
 | 文件 | 覆盖 |
 |---|---|
 | `EconomyTests` | 收益公式、额度、按量计价、平衡回归 |
 | `CoinLedgerTests` | **账目恒等式**、原因分类、分项汇总、流水、旧存档迁移 |
 | `ViewStructureTests` | 扫源码：sheet 页能否关掉、设置页不含宠物内容、无 AI 残留 |
+| `IconSourceTests` | 扫源码：**禁止 SF Symbol / emoji**、图标索引与 sheet 格数一致 |
 | `PetStoreTests` | 互动通路、存档、结算、开局与商店 |
 | `PetPersistenceTests` | 落盘、加载、内存与文件实现行为一致 |
 | `ConfigTests` | 阶段/品种参数、**品种支配检验**、Fixture 自测 |
