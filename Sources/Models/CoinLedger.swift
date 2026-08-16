@@ -52,6 +52,12 @@ enum CoinReason: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    /// 本地化 key。
+    ///
+    /// 放在 Models 而非 View：它是这个枚举的固有属性，
+    /// 且调试面板和收支明细两处都要用，重复一份迟早漂移。
+    var labelKey: String { "coin.reason.\(rawValue)" }
+
     /// 是否计入每日额度。
     ///
     /// 只有看家收益占额度。上线奖励和成就刻意不占 ——
@@ -111,6 +117,17 @@ struct CoinLedger: Codable, Equatable {
     /// 而排查问题只需要最近的。
     private(set) var recent: [CoinEntry]
 
+    /// 按原因的**终身**累计。key 是 `CoinReason.rawValue`。
+    ///
+    /// 不能拿 `recent` 求和 —— 它只有最近 40 笔，玩久了明细页会显示错数。
+    /// 收支明细要的是「一共赚了多少看家钱」，不是「最近 40 笔里有多少」。
+    ///
+    /// **为什么 key 用 String 而不是 `CoinReason`**：Swift 把非 String 键的
+    /// 字典编码成**扁平数组** `["food",35,"loginBonus",10]`，
+    /// 存档里既难读也难手改（排查时我自己就踩了：手写成 JSON 对象后
+    /// 解码失败，整个钱包静默退回默认值）。
+    private(set) var totals: [String: Int]
+
     static let historyLimit = 40
 
     init(initial: Int = 0, at now: Date = Date()) {
@@ -118,6 +135,7 @@ struct CoinLedger: Codable, Equatable {
         totalIn = 0
         totalOut = 0
         recent = []
+        totals = [:]
         if initial > 0 {
             apply(initial, reason: .initialGrant, at: now)
         }
@@ -147,6 +165,7 @@ struct CoinLedger: Codable, Equatable {
             totalOut += amount
         }
 
+        totals[reason.rawValue, default: 0] += amount
         recent.append(CoinEntry(reason: reason, amount: amount,
                                 balance: balance, at: now, note: note))
         if recent.count > Self.historyLimit {
@@ -161,15 +180,33 @@ struct CoinLedger: Codable, Equatable {
     /// 只要每笔变动都走 `apply`，它永远成立。
     var isBalanced: Bool { totalIn - totalOut == balance }
 
-    /// 按原因汇总（调试面板 / 排查用）
-    func total(for reason: CoinReason) -> Int {
-        recent.filter { $0.reason == reason }.reduce(0) { $0 + $1.amount }
+    /// 按原因的终身累计。收支明细页用这个。
+    func total(for reason: CoinReason) -> Int { totals[reason.rawValue] ?? 0 }
+
+    /// 收入项（金额降序，0 的不返回）
+    var incomeBreakdown: [(reason: CoinReason, amount: Int)] {
+        breakdown(income: true)
+    }
+
+    /// 支出项（金额降序，0 的不返回）
+    var spendBreakdown: [(reason: CoinReason, amount: Int)] {
+        breakdown(income: false)
+    }
+
+    private func breakdown(income: Bool) -> [(reason: CoinReason, amount: Int)] {
+        CoinReason.allCases
+            .filter { $0.isIncome == income }
+            .compactMap { r in
+                let v = total(for: r)
+                return v > 0 ? (r, v) : nil
+            }
+            .sorted { $0.1 > $1.1 }
     }
 
     // MARK: - 解码兼容
 
     private enum CodingKeys: String, CodingKey {
-        case balance, totalIn, totalOut, recent
+        case balance, totalIn, totalOut, recent, totals
     }
 
     init(from decoder: Decoder) throws {
@@ -178,6 +215,13 @@ struct CoinLedger: Codable, Equatable {
         totalIn = try c.decodeIfPresent(Int.self, forKey: .totalIn) ?? 0
         totalOut = try c.decodeIfPresent(Int.self, forKey: .totalOut) ?? 0
         recent = try c.decodeIfPresent([CoinEntry].self, forKey: .recent) ?? []
+        // 旧账本没有 totals。用 recent 重建 —— 只覆盖最近 40 笔，
+        // 是个已知的低估，但比显示 0 好，且往后每笔都会准确累加。
+        if let saved = try c.decodeIfPresent([String: Int].self, forKey: .totals) {
+            totals = saved
+        } else {
+            totals = recent.reduce(into: [:]) { $0[$1.reason.rawValue, default: 0] += $1.amount }
+        }
     }
 }
 
@@ -197,6 +241,7 @@ extension CoinLedger {
             // 直接调账并补一笔说明，保持恒等式成立。
             balance = target
             totalOut += -delta
+            totals[CoinReason.debugGrant.rawValue, default: 0] += -delta
             recent.append(CoinEntry(reason: .debugGrant, amount: -delta,
                                     balance: balance, at: now,
                                     note: "set \(target) (扣减)"))

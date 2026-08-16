@@ -12,6 +12,8 @@ struct PetHomeView: View {
     /// completeOnboarding 后立刻翻转，导致 sheet 关闭动画被打断。
     @State private var needsOnboarding = false
     @State private var showSettings = false
+    @State private var showEarnings = false
+    @State private var showPets = false
     @State private var showFood = false
     #if DEBUG
     @State private var showDebug = false
@@ -96,6 +98,12 @@ struct PetHomeView: View {
         .sheet(isPresented: $showSettings) {
             PetSettingsView(store: store, talk: talk)
         }
+        .sheet(isPresented: $showEarnings) {
+            EarningsView(store: store)
+        }
+        .sheet(isPresented: $showPets) {
+            PetsView(store: store)
+        }
         #if DEBUG
         .sheet(isPresented: $showDebug) {
             DebugPanel(store: store, talk: talk) {
@@ -175,17 +183,31 @@ struct PetHomeView: View {
                 }
                 Spacer(minLength: 0)
 
-                // 金币：像素图标 + 等宽数字
-                HStack(spacing: Pixel.u(1)) {
-                    PixelIconView(icon: .coin, size: Pixel.u(4))
-                    Text(verbatim: "\(store.wallet.coins)")
-                        .font(Pixel.mono(Pixel.numberSize, .semibold))
-                        .foregroundStyle(Pixel.coin.color)
+                // 金币 —— 点进去看收支明细。
+                // 用钱堆图标而非单枚 coin：单枚在别处表示「价格」，
+                // 这里是「账目入口」，形状区分开避免混淆。
+                Button { showEarnings = true } label: {
+                    HStack(spacing: Pixel.u(1)) {
+                        PixelIconView(icon: .coins, size: Pixel.u(4.5))
+                        Text(verbatim: "\(store.wallet.coins)")
+                            .font(Pixel.mono(Pixel.numberSize, .semibold))
+                            .foregroundStyle(Pixel.coin.color)
+                    }
                 }
+                .buttonStyle(.plain)
 
-                // 当前最紧急的需求
+                // 当前最紧急的需求。
+                // 曾经把它叠在爪印右下角当角标 —— 16px 图标上再压一个
+                // 14px 角标，两个形状糊成一团，爪垫完全看不出来。
+                // 像素图标没有那个空间，老实并排放。
                 PixelIconView(icon: .forNeed(store.pet.dominantNeed(at: now)),
-                              size: Pixel.u(6))
+                              size: Pixel.u(5))
+
+                // 宠物页 —— 状态详情 + 花名册 + 商店
+                Button { showPets = true } label: {
+                    PixelIconView(icon: .paw, size: Pixel.u(5.5))
+                }
+                .buttonStyle(.plain)
 
                 Button {
                     showSettings = true

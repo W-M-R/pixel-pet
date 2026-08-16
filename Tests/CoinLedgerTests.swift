@@ -114,6 +114,62 @@ final class CoinLedgerTests: XCTestCase {
         XCTAssertEqual(l.recent.last?.balance, l.balance)
     }
 
+    // MARK: - 分项汇总（收支明细页的数据源）
+
+    /// **终身累计不能用 `recent` 求和** —— 它只留最近 40 笔。
+    ///
+    /// 这是给收支明细页加数据时踩到的坑：原来 `total(for:)` 扫 `recent`，
+    /// 玩久了明细页会显示错数（少算被裁掉的那些）。
+    func testTotalsAreLifetimeNotJustRecent() {
+        var l = CoinLedger(initial: 100_000)
+        let n = CoinLedger.historyLimit * 2
+        for _ in 0..<n { l.apply(3, reason: .food) }
+
+        XCTAssertEqual(l.total(for: .food), 3 * n,
+                       "终身累计要算全部，不只是流水里剩下的")
+        XCTAssertEqual(l.recent.count, CoinLedger.historyLimit)
+        XCTAssertEqual(l.totalOut, 3 * n)
+    }
+
+    func testBreakdownSplitsIncomeAndSpendSortedDescending() {
+        var l = CoinLedger(initial: 5000)
+        l.apply(300, reason: .achievement)
+        l.apply(99, reason: .offlineCare)
+        l.apply(4000, reason: .starterPet)
+        l.apply(35, reason: .food)
+
+        let inc = l.incomeBreakdown
+        XCTAssertEqual(inc.map(\.reason), [.initialGrant, .achievement, .offlineCare],
+                       "收入项按金额降序")
+        XCTAssertTrue(inc.allSatisfy { $0.reason.isIncome })
+
+        let out = l.spendBreakdown
+        XCTAssertEqual(out.map(\.reason), [.starterPet, .food])
+        XCTAssertTrue(out.allSatisfy { !$0.reason.isIncome })
+
+        // 分项之和要等于总额，否则明细页和余额对不上
+        XCTAssertEqual(inc.reduce(0) { $0 + $1.amount }, l.totalIn)
+        XCTAssertEqual(out.reduce(0) { $0 + $1.amount }, l.totalOut)
+    }
+
+    /// 没发生过的原因不该出现在明细里（不然一堆 0 占版面）
+    func testBreakdownSkipsZeroReasons() {
+        var l = CoinLedger(initial: 100)
+        l.apply(10, reason: .food)
+        XCTAssertEqual(l.spendBreakdown.count, 1)
+        XCTAssertFalse(l.incomeBreakdown.contains { $0.reason == .achievement })
+    }
+
+    /// 每个 reason 都要有本地化 key
+    func testEveryReasonHasLabelKey() {
+        for r in CoinReason.allCases {
+            XCTAssertEqual(r.labelKey, "coin.reason.\(r.rawValue)")
+            XCTAssertFalse(L(r.labelKey).isEmpty)
+            XCTAssertNotEqual(L(r.labelKey), r.labelKey,
+                              "\(r) 缺本地化 —— 界面上会显示 key 本身")
+        }
+    }
+
     // MARK: - 存档
 
     func testRoundTripsThroughJSON() throws {

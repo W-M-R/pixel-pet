@@ -59,6 +59,9 @@ PAL = {
     # 星（成就）
     's': (200, 156, 40, 255),
     'S': (250, 214, 110, 255),
+    # 爪印（宠物入口）—— 取猫毛的橙褐，和 LPC 素材同色系
+    'p': (170, 112, 70, 255),
+    'P': (214, 156, 106, 255),
 }
 
 # 每个图标 16 行 × 16 列
@@ -245,6 +248,49 @@ ICONS['heart'] = [
 ]
 
 # 星（成就）
+# 钱堆（收益明细入口）—— 三枚叠放的币。
+# 刻意区别于单枚 `coin`：那个是 HUD 上的「当前余额」，
+# 这个是「收支构成」，语义不同就该有不同形状。
+ICONS['coins'] = [
+    "................",
+    "................",
+    "................",
+    "....KKKKKKKK....",
+    "..KKoOOOOOOoKK..",
+    "..KoOyOOOOOOoK..",
+    "..KooOOOOOOooK..",
+    "..KKKKKKKKKKKK..",
+    ".KKoOOOOOOOOoKK.",
+    ".KoOyOOOOOOOOoK.",
+    ".KooOOOOOOOOooK.",
+    ".KKKKKKKKKKKKKK.",
+    "KKoOOOOOOOOOOoKK",
+    "KoOyOOOOOOOOOOoK",
+    "KooOOOOOOOOOOooK",
+    ".KKKKKKKKKKKKKK.",
+]
+
+# 爪印（宠物入口）—— 三趾 + 水滴形掌垫。
+# 掌垫上窄下宽，不是圆角矩形：矩形版本看起来像三个点加一块板。
+ICONS['paw'] = [
+    "................",
+    "..KK...KK...KK..",
+    ".KPPK.KPPK.KPPK.",
+    ".KPPK.KPPK.KPPK.",
+    ".KppK.KppK.KppK.",
+    "..KK...KK...KK..",
+    "................",
+    "......KKKK......",
+    "....KKPPPPKK....",
+    "...KPPPPPPPPK...",
+    "..KPPPPPPPPPPK..",
+    "..KPPPPPPPPPPK..",
+    "..KppPPPPPPppK..",
+    "...KppppppppK...",
+    "....KKKKKKKK....",
+    "................",
+]
+
 ICONS['star'] = [
     "................",
     "................",
@@ -284,8 +330,10 @@ ICONS['sleep'] = [
     "................",
 ]
 
+# ⚠️ 只能**追加到末尾** —— PixelIcon 的 case 用的是这里的索引，
+# 中间插入会让所有后续图标错位。
 ORDER = ['meat', 'ball', 'bath', 'coin', 'scraps', 'kibble',
-         'can', 'fish', 'heart', 'star', 'sleep']
+         'can', 'fish', 'heart', 'star', 'sleep', 'coins', 'paw']
 
 
 def build():

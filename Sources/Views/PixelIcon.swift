@@ -23,6 +23,8 @@ enum PixelIcon: Int, CaseIterable {
     case heart          // 心（陪伴）
     case star           // 星（成就）
     case sleep          // zZ（睡眠）
+    case coins          // 钱堆（收益明细入口，区别于单枚 coin = 余额）
+    case paw            // 爪印（宠物页入口）
 
     /// sheet 里的图标边长（源像素）
     static let cell: CGFloat = 16

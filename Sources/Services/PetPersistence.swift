@@ -41,13 +41,33 @@ struct FilePersistence: PetPersistence {
     }
 
     func loadPet() -> PetState? {
-        guard let data = try? Data(contentsOf: petURL) else { return nil }
-        return try? JSONDecoder().decode(PetState.self, from: data)
+        decode(PetState.self, from: petURL, label: "pet")
     }
 
     func loadWallet() -> PetWallet? {
-        guard let data = try? Data(contentsOf: walletURL) else { return nil }
-        return try? JSONDecoder().decode(PetWallet.self, from: data)
+        decode(PetWallet.self, from: walletURL, label: "wallet")
+    }
+
+    /// 解码存档。
+    ///
+    /// **文件存在但解码失败要吼出来。** 原来是 `try?` 直接吞掉，
+    /// 于是「没有存档」和「存档读不动」表现完全一样 ——
+    /// 都静默退回默认值。排查时我手写了一份 JSON，
+    /// 因为字段格式不对而整个钱包被重置，界面回到开局流程，
+    /// 但没有任何地方提示「你的存档没读进去」，白查了很久。
+    ///
+    /// 线上仍然降级到默认值（总比崩了好），但 DEBUG 下直接断言。
+    private func decode<T: Decodable>(_ type: T.Type,
+                                      from url: URL,
+                                      label: String) -> T? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            assertionFailure("\(label).json 解码失败，将退回默认值：\(error)")
+            NSLog("[PixelPet] %@.json 解码失败：%@", label, "\(error)")
+            return nil
+        }
     }
 
     /// 写盘用 `.atomic` —— 中途被杀不会留下半个文件
