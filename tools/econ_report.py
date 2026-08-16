@@ -35,10 +35,15 @@ MIN_SETTLE_H = 0.5
 # CheckInReward
 CHECKIN_COINS, CHECKIN_MIN_H = 10, 5.0
 
-# FoodItem
+# FoodItem —— 价格 = max(最低价, 补上的饱食量×10×UNIT + 附加效果固定价)
 UNIT = 5                   # coinsPer10Percent
-MULT = dict(scraps=0, kibble=1, can=3, fish=5)
 RESTORE = dict(scraps=0.30, kibble=0.70, can=1.0, fish=1.0)
+# 附加效果（心情/buff）按固定价 —— 它的价值和饱食无关。
+# 曾经整个价格都按量算，导致饱食 99% 时小鱼干只要 3 枚却拿满额 buff。
+EXTRA = dict(scraps=0, kibble=0, can=100, fish=200)
+# 最低价 —— 防「满饱时全免费」可零成本刷 foodCounts 和成就
+MIN_PRICE = dict(scraps=0, kibble=2, can=100, fish=200)
+FREE = {'scraps'}          # 剩饭永久免费（防死锁兜底）
 BOOST = 1.6                # boostMultiplier（抬达成率，不是乘收益）
 
 
@@ -57,9 +62,16 @@ def rate(satiety, mood, boost=False):
 
 
 def food_cost(current_satiety, food='kibble'):
-    """FoodItem.cost —— 按实际恢复量计价"""
+    """
+    FoodItem.cost —— 饱食部分按量，附加效果固定价，再套最低价。
+
+    与 Swift 的 FoodItem.cost(currentSatiety:) 保持一致。
+    """
+    if food in FREE:
+        return 0
     gained = min(RESTORE[food], 1.0 - current_satiety)
-    return int(gained * 10 * UNIT * MULT[food] + 0.5)
+    satiety_part = int(gained * 10 * UNIT + 0.5)
+    return max(MIN_PRICE[food], satiety_part + EXTRA[food])
 
 
 def simulate_day(stage, feeds_per_day, food='kibble', mood_override=None,
@@ -284,7 +296,7 @@ def main():
     print(" 五、单次喂食花费（按当前饱食，成年）")
     print("=" * 74)
     print(f" {'饱食':>6s} {'剩饭':>6s} {'普通粮':>7s} {'罐头':>6s} {'小鱼干':>7s}")
-    for cur in (0.0, 0.3, 0.6, 0.9):
+    for cur in (0.0, 0.3, 0.6, 0.9, 0.95, 1.0):
         cells = " ".join(f"{food_cost(cur, f):6d}"
                          for f in ('scraps', 'kibble', 'can', 'fish'))
         print(f" {cur*100:5.0f}% {cells}")

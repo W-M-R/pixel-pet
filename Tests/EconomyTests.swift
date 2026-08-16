@@ -217,8 +217,36 @@ final class EconomyTests: XCTestCase {
         XCTAssertEqual(FoodItem.kibble.cost(currentSatiety: 0), 35)
         // 已 80% 饱：只能补 20% → 20/10 × 5 = 10
         XCTAssertEqual(FoodItem.kibble.cost(currentSatiety: 0.8), 10)
-        // 满饱：不花钱
-        XCTAssertEqual(FoodItem.kibble.cost(currentSatiety: 1.0), 0)
+        // 满饱：落到最低价，**不是 0**
+        XCTAssertEqual(FoodItem.kibble.cost(currentSatiety: 1.0),
+                       FoodItem.kibble.minPrice)
+    }
+
+    /// **满饱时不能免费** —— 否则可以零成本反复点喂食刷 foodCounts
+    /// 和美食类成就。剩饭是唯一例外（防死锁的兜底）。
+    func testNothingIsFreeWhenFullExceptScraps() {
+        for food in FoodItem.all where !food.isFree {
+            XCTAssertGreaterThan(food.cost(currentSatiety: 1.0), 0,
+                                 "\(food.id) 满饱时免费 —— 可以零成本刷成就")
+        }
+        XCTAssertEqual(FoodItem.scraps.cost(currentSatiety: 1.0), 0,
+                       "剩饭必须永久免费")
+    }
+
+    /// **附加效果按固定价收费。**
+    ///
+    /// 曾经整个价格都按恢复量算，导致饱食 99% 时小鱼干只要 3 枚
+    /// 却拿满额 buff（24h 达成率 ×1.6）—— 那就成了最优解，
+    /// 「奢侈品」定位被破坏。
+    func testExtraEffectsCostFixedPrice() {
+        // 满饱时只剩附加效果的钱
+        XCTAssertEqual(FoodItem.can.cost(currentSatiety: 1.0), 100)
+        XCTAssertEqual(FoodItem.driedFish.cost(currentSatiety: 1.0), 200)
+
+        // 有附加效果的食物，满饱价必须远高于普通粮
+        XCTAssertGreaterThan(FoodItem.driedFish.cost(currentSatiety: 1.0),
+                             FoodItem.kibble.cost(currentSatiety: 1.0) * 10,
+                             "buff 不该白送")
     }
 
     func testScrapsAlwaysFree() {
@@ -234,12 +262,20 @@ final class EconomyTests: XCTestCase {
         XCTAssertEqual(FoodItem.driedFish.fullPrice, 250)
     }
 
-    /// 半饱时吃好东西不再「浪费」—— 价格按实际恢复量走
-    func testNoWasteWhenPartiallyFull() {
+    /// 半饱时吃好东西不再「浪费」—— **饱食部分**按实际恢复量走。
+    ///
+    /// 注意不是整个价格减半：附加效果是固定价，半饱时照收。
+    /// 罐头空腹 150 = 饱食 50 + 心情 100；半饱 125 = 饱食 25 + 心情 100。
+    func testSatietyPartScalesWithRestore() {
         let atEmpty = FoodItem.can.cost(currentSatiety: 0)
         let atHalf = FoodItem.can.cost(currentSatiety: 0.5)
-        XCTAssertEqual(Double(atHalf), Double(atEmpty) * 0.5, accuracy: 1.0,
-                       "补一半只该花一半钱")
+        let fixed = FoodItem.can.extraPrice
+
+        let satietyAtEmpty = atEmpty - fixed
+        let satietyAtHalf = atHalf - fixed
+        XCTAssertEqual(Double(satietyAtHalf), Double(satietyAtEmpty) * 0.5,
+                       accuracy: 1.0, "饱食部分补一半只该花一半钱")
+        XCTAssertEqual(atHalf, 125)
     }
 
     // MARK: - 平衡回归（对照 docs/04-balance.md）
