@@ -89,27 +89,7 @@ struct OnboardingView: View {
                 Text(verbatim: L("settings.color"))
                     .font(Pixel.mono(Pixel.labelSize, .bold))
                     .foregroundStyle(Pixel.textDim.color)
-                HStack(spacing: Pixel.u(2)) {
-                    ForEach(0..<breed.colorCount, id: \.self) { i in
-                        Button { colorIndex = i } label: {
-                            ZStack {
-                                Rectangle().fill(Pixel.slotEmpty.color)
-                                if colorIndex == i {
-                                    Rectangle()
-                                        .strokeBorder(Pixel.coin.color,
-                                                      lineWidth: Pixel.u(1))
-                                }
-                                Text(verbatim: "\(i + 1)")
-                                    .font(Pixel.mono(Pixel.bodySize, .medium))
-                                    .foregroundStyle(colorIndex == i
-                                                     ? Pixel.coin.color
-                                                     : Pixel.textDim.color)
-                            }
-                            .frame(height: Pixel.u(9))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
+                CoatPicker(breed: breed, colorIndex: $colorIndex)
             }
         }
     }
@@ -144,64 +124,8 @@ struct OnboardingView: View {
         .buttonStyle(.plain)
     }
 
-    /// 属性对比面板。
-    ///
-    /// 三条都用「相对基准」表述而非绝对数值 —— 玩家不需要知道
-    /// 「心情周期 14 小时」，只需要知道「比一般的更黏人」。
-    private var statPanel: some View {
-        VStack(spacing: Pixel.u(1.5)) {
-            statRow(labelKey: "stat.mood",
-                    icon: .ball,
-                    // 周期越短越黏人 → 反转，让「条越长 = 越需要陪」
-                    value: 1 - normalized(breed.moodCycleHours,
-                                          lo: 12, hi: 24),
-                    detail: String(format: L("onboard.stat.mood.detail"),
-                                   Int(breed.moodCycleHours)))
-            statRow(labelKey: "stat.hygiene",
-                    icon: .bath,
-                    // 同理反转：条越长 = 越需要洗
-                    value: 1 - normalized(breed.hygieneCycleHours,
-                                          lo: 48, hi: 96),
-                    detail: String(format: L("onboard.stat.hygiene.detail"),
-                                   Int(breed.hygieneCycleHours / 24)))
-            statRow(labelKey: "onboard.stat.gold",
-                    icon: .coin,
-                    // 以 1.00 为中点（0.90~1.10 映射到 0~1），
-                    // 这样「均衡型」显示在正中间而不是靠左
-                    value: normalized(breed.goldMultiplier,
-                                      lo: 0.90, hi: 1.10),
-                    detail: String(format: L("onboard.stat.gold.detail"),
-                                   Int((breed.goldMultiplier - 1) * 100)))
-        }
-        .padding(Pixel.u(2.5))
-        .background(PixelPanel(fill: Pixel.panelDark,
-                               lite: Pixel.panel,
-                               dark: Pixel.panelDark))
-    }
-
-    private func statRow(labelKey: String,
-                         icon: PixelIcon,
-                         value: Double,
-                         detail: String) -> some View {
-        HStack(spacing: Pixel.u(2)) {
-            PixelIconView(icon: icon, size: Pixel.u(4))
-            Text(verbatim: L(labelKey))
-                .font(Pixel.mono(Pixel.labelSize))
-                .foregroundStyle(Pixel.textDim.color)
-                .frame(width: Pixel.u(14), alignment: .leading)
-            PixelBar(value: value, tint: Pixel.satiety, slots: 8)
-                .frame(width: Pixel.u(20))
-            Text(verbatim: detail)
-                .font(Pixel.mono(Pixel.labelSize))
-                .foregroundStyle(Pixel.text.color)
-        }
-    }
-
-    /// 把属性值映射到 0...1，用于画格子条
-    private func normalized(_ v: Double, lo: Double, hi: Double) -> Double {
-        guard hi > lo else { return 0.5 }
-        return min(1, max(0, (v - lo) / (hi - lo)))
-    }
+    /// 属性对比面板。实现在 `BreedStatPanel`（商店也用）。
+    private var statPanel: some View { BreedStatPanel(breed: breed) }
 
     // MARK: - 起名
 
@@ -283,56 +207,5 @@ struct OnboardingView: View {
                                  colorIndex: colorIndex,
                                  name: name)
         onDone()
-    }
-}
-
-/// 品种立绘。取侧视站立帧，按整数倍放大。
-///
-/// 用真实精灵而非抽象图标 —— 选宠物时最该看到的就是「它长什么样」。
-struct BreedPortrait: View {
-    let breed: PetBreed
-    let colorIndex: Int
-
-    /// 显示边长（pt）。源帧是 32×32，取 32 的整数倍保证像素完美。
-    var size: CGFloat = 64
-
-    var body: some View {
-        Group {
-            if let img = Self.image(breed: breed, colorIndex: colorIndex) {
-                img.interpolation(.none)
-                    .resizable()
-                    .frame(width: size, height: size)
-            } else {
-                // sheet 缺失时不崩，留空位
-                Color.clear.frame(width: size, height: size)
-            }
-        }
-    }
-
-    /// 从 sheet 里切出站立帧。
-    ///
-    /// 走 `Bundle` + `UIImage` 而非 `Image(name)` —— `Assets/` 是
-    /// raw resources 不是 asset catalog（见 PixelIcon 的同类注释）。
-    private static var cache: [String: Image] = [:]
-
-    private static func image(breed: PetBreed, colorIndex: Int) -> Image? {
-        let key = "\(breed.id)|\(colorIndex)"
-        if let hit = cache[key] { return hit }
-
-        guard let url = Bundle.main.url(forResource: breed.sheetName,
-                                        withExtension: "png"),
-              let data = try? Data(contentsOf: url),
-              let full = UIImage(data: data),
-              let cg = full.cgImage else { return nil }
-
-        let cell = Int(PetSpriteSheet.frameSize.width)
-        // 侧视朝右行(r0)的第 0 列，按毛色偏移
-        let x = colorIndex * PetSpriteSheet.columnsPerColor * cell
-        let rect = CGRect(x: x, y: 0, width: cell, height: cell)
-        guard let cropped = cg.cropping(to: rect) else { return nil }
-
-        let img = Image(uiImage: UIImage(cgImage: cropped))
-        cache[key] = img
-        return img
     }
 }

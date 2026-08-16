@@ -2344,23 +2344,6 @@
         }
       }
     },
-    "shop.stats": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "play %dh · bath %dd · gold %+d%%"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "陪玩 %d时 · 洗澡 %d天 · 金币 %+d%%"
-          }
-        }
-      }
-    },
     "shop.subtitle": {
       "extractionState": "manual",
       "localizations": {

@@ -14,23 +14,34 @@ enum Fixture {
 
     // MARK: - PetStore
 
-    /// 独立的临时目录，测试之间互不干扰
+    /// 独立的临时目录。**只在需要验证真实文件读写时用** ——
+    /// 一般测试走 `store()` 的内存实现，更快且不用清理。
     static func tempDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
     }
 
-    /// 可测的 store。
+    /// 可测的 store，用内存存档 + 空提醒。
     ///
-    /// 关掉通知与心跳 —— 前者会真去调 `UNUserNotificationCenter`
-    /// （慢且有系统副作用），后者会留下定时器。
+    /// 比之前的「临时目录 + 两个 bool 开关」干净：
+    /// 依赖是注入的对象而非行为开关，且不碰文件系统。
     ///
-    /// `PetStore` 是 `@MainActor`，所以只有这个方法需要隔离；
-    /// 其余的纯值类型构造不需要，否则非隔离的测试用不了。
+    /// `PetStore` 是 `@MainActor`，所以只有这类方法需要隔离；
+    /// 纯值类型的构造不需要，否则非隔离的测试用不了。
+    @MainActor
+    static func store(
+        persistence: PetPersistence = MemoryPersistence()
+    ) -> PetStore {
+        PetStore(storage: persistence,
+                 reminders: NoopReminders(),
+                 runsHeartbeat: false)
+    }
+
+    /// 用真实文件存档的 store。验证「重开 app 后状态还在」时用。
     @MainActor
     static func store(in dir: URL) -> PetStore {
-        PetStore(directory: dir,
-                 schedulesNotifications: false,
+        PetStore(storage: FilePersistence(directory: dir),
+                 reminders: NoopReminders(),
                  runsHeartbeat: false)
     }
 
@@ -129,24 +140,39 @@ enum Fixture {
     }
 }
 
-/// 给测试类用的临时目录管理。
+/// 给测试类用的 store 管理。
 ///
-/// 继承它就自动获得 `dir` 与 `store()`，并在 tearDown 清理。
+/// 默认走**内存存档** —— 快、无副作用、不用清理。
+/// 需要验证真实文件读写时用 `makeFileStore()`。
 @MainActor
 class StoreTestCase: XCTestCase {
 
-    private(set) var dir: URL!
+    /// 本次测试共享的内存存档。多次 `makeStore()` 会读到同一份数据，
+    /// 用来模拟「重开 app」。
+    private(set) var memory: MemoryPersistence!
+
+    /// 临时目录，只在 `makeFileStore()` 时才建
+    private var dir: URL?
 
     override func setUp() {
         super.setUp()
-        dir = Fixture.tempDirectory()
+        memory = MemoryPersistence()
     }
 
     override func tearDown() {
-        try? FileManager.default.removeItem(at: dir)
+        if let dir { try? FileManager.default.removeItem(at: dir) }
+        dir = nil
         super.tearDown()
     }
 
-    /// 在本次测试的临时目录里开一个 store
-    func makeStore() -> PetStore { Fixture.store(in: dir) }
+    /// 开一个 store，共享本次测试的内存存档。
+    ///
+    /// 连续调两次可以模拟「关掉 app 再打开」—— 第二次会读到第一次写的数据。
+    func makeStore() -> PetStore { Fixture.store(persistence: memory) }
+
+    /// 用真实文件的 store。验证 JSON 编解码往返时用。
+    func makeFileStore() -> PetStore {
+        if dir == nil { dir = Fixture.tempDirectory() }
+        return Fixture.store(in: dir!)
+    }
 }

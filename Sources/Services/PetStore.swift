@@ -1,80 +1,56 @@
 import Foundation
 import Observation
 
-/// 宠物存档。用 JSON 存文件，不用 UserDefaults——将来要加多只宠物、
-/// 要导出备份都方便。
+/// 宠物状态的唯一持有者。
+///
+/// 所有状态变更都经过这里，因为每次变更都要落盘 —— 分散写会漏。
+/// `@Observable` 让 SwiftUI 自动跟随。
+///
+/// 存档与提醒都通过协议注入（`PetPersistence` / `PetReminderScheduling`），
+/// 所以测试可以用内存实现，不碰文件系统也不碰系统通知。
 @Observable
 @MainActor
 final class PetStore {
 
     private(set) var pet: PetState
     private(set) var wallet: PetWallet
-    private let fileURL: URL
-    private let walletURL: URL
+
+    /// 存档后端。协议而非具体类型 —— 测试注入 `MemoryPersistence`。
+    private let storage: PetPersistence
+    /// 提醒调度。测试注入 `NoopReminders`。
+    private let reminders: PetReminderScheduling
 
     /// 驱动 UI 定时刷新的心跳。状态本身是按时间戳算的，
     /// 但 SwiftUI 需要一个变化信号才会重绘。
     private(set) var tick: Date = Date()
     private var timer: Timer?
 
-    /// app 默认的存档目录
-    static var defaultDirectory: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory,
-                                 in: .userDomainMask)[0]
-    }
-
-    /// 是否重排系统通知。
-    ///
-    /// 测试里要关掉 —— 否则每次 persist 都会真去调
-    /// UNUserNotificationCenter，既慢又有副作用。
-    private let schedulesNotifications: Bool
-
-    /// 是否跑心跳定时器。测试里不需要。
-    private let runsHeartbeat: Bool
-
     /// - Parameters:
-    ///   - directory: 存档目录。测试传临时目录即可独立运行 ——
-    ///     原来这里硬编码 applicationSupportDirectory，
-    ///     导致 299 行的状态变更逻辑完全无法测试。
-    ///   - schedulesNotifications: 是否重排通知，测试关掉
-    ///   - runsHeartbeat: 是否跑心跳，测试关掉
-    init(directory: URL? = nil,
-         schedulesNotifications: Bool = true,
+    ///   - storage: 存档后端。默认写 Application Support。
+    ///   - reminders: 提醒调度。默认走系统通知。
+    ///   - runsHeartbeat: 是否跑心跳定时器。测试关掉，否则会留下 Timer。
+    init(storage: PetPersistence = FilePersistence(),
+         reminders: (any PetReminderScheduling)? = nil,
          runsHeartbeat: Bool = true) {
-        self.schedulesNotifications = schedulesNotifications
-        self.runsHeartbeat = runsHeartbeat
-        let dir = directory ?? Self.defaultDirectory
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        self.fileURL = dir.appendingPathComponent("pet.json")
-        self.walletURL = dir.appendingPathComponent("wallet.json")
+        self.storage = storage
+        // 默认值不能写在参数列表里 —— SystemReminders 是 @MainActor，
+        // 而参数默认值在非隔离上下文求值。init 本身是 @MainActor，
+        // 所以在这里构造是安全的。
+        self.reminders = reminders ?? SystemReminders()
 
-        // 用局部变量算好再赋值。init 里在所有 stored property 就位前
+        // 用局部变量算好再赋值 —— init 里在所有 stored property 就位前
         // 访问 self.pet / self.wallet 会编译失败。
-        let loadedPet: PetState
-        if let data = try? Data(contentsOf: fileURL),
-           let decoded = try? JSONDecoder().decode(PetState.self, from: data) {
-            loadedPet = decoded
-        } else {
-            // 首次启动必须立刻写盘 —— 否则 bornAt 每次启动都被重置，
-            // 宠物永远显示「相伴第 0 天」。
-            loadedPet = PetState(breedID: PetBreed.cat.id, colorIndex: 0, name: "")
-            if let d = try? JSONEncoder().encode(loadedPet) {
-                try? d.write(to: fileURL, options: .atomic)
-            }
-        }
-        self.pet = loadedPet
+        let loadedPet = storage.loadPet()
+            ?? PetState(breedID: PetBreed.cat.id, colorIndex: 0, name: "")
+        let loadedWallet = storage.loadWallet() ?? PetWallet()
 
-        let loadedWallet: PetWallet
-        if let data = try? Data(contentsOf: walletURL),
-           let w = try? JSONDecoder().decode(PetWallet.self, from: data) {
-            loadedWallet = w
-        } else {
-            loadedWallet = PetWallet()
-            if let d = try? JSONEncoder().encode(loadedWallet) {
-                try? d.write(to: walletURL, options: .atomic)
-            }
-        }
+        self.pet = loadedPet
         self.wallet = loadedWallet
+
+        // 首次启动必须立刻写盘 —— 否则 bornAt 每次启动都被重置，
+        // 宠物永远显示「相伴第 0 天」。
+        if storage.loadPet() == nil { storage.save(pet: loadedPet) }
+        if storage.loadWallet() == nil { storage.save(wallet: loadedWallet) }
 
         if runsHeartbeat { startHeartbeat() }
     }
@@ -379,15 +355,11 @@ final class PetStore {
     }
 
     private func persist() {
-        if let w = try? JSONEncoder().encode(wallet) {
-            try? w.write(to: walletURL, options: .atomic)
-        }
-        guard let data = try? JSONEncoder().encode(pet) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        storage.save(wallet: wallet)
+        storage.save(pet: pet)
         tick = Date()
-        // 状态变了就重排通知 —— 因为「何时会饿」是从时间戳算的
-        guard schedulesNotifications else { return }
+        // 状态变了就重排提醒 —— 因为「何时会饿」是从时间戳算的
         let name = pet.name.isEmpty ? L(pet.breed.nameKey) : pet.name
-        PetNotifications.reschedule(for: pet, petName: name)
+        reminders.reschedule(for: pet, petName: name)
     }
 }

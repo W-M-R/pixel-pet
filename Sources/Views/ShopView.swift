@@ -91,19 +91,14 @@ struct ShopView: View {
                     Text(verbatim: L(breed.traitKey))
                         .font(Pixel.mono(Pixel.labelSize))
                         .foregroundStyle(Pixel.textDim.color)
-
-                    // 属性摘要：三行太占地方，压成一行
-                    Text(verbatim: String(
-                        format: L("shop.stats"),
-                        Int(breed.moodCycleHours),
-                        Int(breed.hygieneCycleHours / 24),
-                        Int((breed.goldMultiplier - 1) * 100)))
-                        .font(Pixel.mono(Pixel.labelSize))
-                        .foregroundStyle(Pixel.textDim.color)
                 }
 
                 Spacer(minLength: 0)
             }
+
+            // 属性用共享面板 —— 原来压成一行文字，信息密度太低，
+            // 而「买之前看清属性」正是这个页面的核心。
+            BreedStatPanel(breed: breed, compact: true)
 
             // 购买按钮 / 已拥有标记
             Button {

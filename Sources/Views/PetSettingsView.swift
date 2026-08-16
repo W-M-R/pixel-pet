@@ -121,32 +121,11 @@ struct PetSettingsView: View {
             .pickerStyle(.segmented)
             .disabled(owned.count < 2)
 
-            // 毛色用色块选，比下拉直观
-            HStack(spacing: 10) {
-                ForEach(0..<pet.breed.colorCount, id: \.self) { i in
-                    Button {
-                        store.choose(breedID: pet.breedID, colorIndex: i)
-                    } label: {
-                        ZStack {
-                            Rectangle().fill(Pixel.slotEmpty.color)
-                            if pet.colorIndex == i {
-                                // 选中框用像素描边，不用圆角
-                                Rectangle()
-                                    .strokeBorder(Pixel.coin.color,
-                                                  lineWidth: Pixel.u(1))
-                            }
-                            Text(verbatim: "\(i + 1)")
-                                .font(Pixel.mono(Pixel.bodySize, .medium))
-                                .foregroundStyle(pet.colorIndex == i
-                                                 ? Pixel.coin.color
-                                                 : Pixel.textDim.color)
-                        }
-                        .frame(height: Pixel.u(9))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.vertical, 2)
+            // 毛色用共享的 CoatPicker（开局流程也用它）
+            CoatPicker(breed: pet.breed, colorIndex: Binding(
+                get: { pet.colorIndex },
+                set: { store.choose(breedID: pet.breedID, colorIndex: $0) }))
+                .padding(.vertical, 2)
         }
     }
 

@@ -5,7 +5,8 @@ import XCTest
 ///
 /// **这些测试原来写不出来** —— `init()` 直接读 `applicationSupportDirectory`，
 /// 无法注入路径，所以 299 行的状态变更 + 结算编排零覆盖。
-/// 现在 init 接受 `directory:`，测试用临时目录独立跑。
+/// 现在存档与提醒都是注入的协议（`PetPersistence` / `PetReminderScheduling`），
+/// 测试用内存实现 —— 不碰文件系统也不碰系统通知。
 /// 临时目录与 store 构造在 `StoreTestCase`（见 Fixture.swift）
 final class PetStoreTests: StoreTestCase {
 
@@ -169,11 +170,29 @@ final class PetStoreTests: StoreTestCase {
 
     // MARK: - 存档
 
+    /// 首次启动必须立刻写盘 —— 否则 bornAt 每次启动都被重置，
+    /// 宠物永远显示「相伴第 0 天」。
+    ///
+    /// 用内存存档断言「save 被调用过」，比检查文件存在更直接。
     func testFirstLaunchPersistsImmediately() {
-        _ = makeStore()
-        let petFile = dir.appendingPathComponent("pet.json")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: petFile.path),
-                      "首次启动必须立刻写盘，否则 bornAt 每次都重置")
+        let mem = MemoryPersistence()
+        XCTAssertNil(mem.loadPet(), "前提：空存档")
+
+        _ = Fixture.store(persistence: mem)
+
+        XCTAssertNotNil(mem.loadPet(), "首启应立刻写入宠物")
+        XCTAssertNotNil(mem.loadWallet(), "首启应立刻写入钱包")
+    }
+
+    /// 真实文件路径的往返。单独一个测试覆盖 FilePersistence，
+    /// 其余测试走内存实现（快且不用清理）。
+    func testFilePersistenceRoundTrip() {
+        let store = makeFileStore()
+        store.rename("文件测试")
+
+        // 重开：新的 FilePersistence 指向同一目录
+        let reopened = makeFileStore()
+        XCTAssertEqual(reopened.pet.name, "文件测试")
     }
 
     func testWalletSurvivesPetReset() {
@@ -492,5 +511,85 @@ final class OnboardingStoreTests: StoreTestCase {
                                         from: Data(json.utf8))
         XCTAssertTrue(w.hasCompletedOnboarding,
                       "老用户不该被拉回选宠界面")
+    }
+}
+
+// MARK: - 依赖注入
+
+/// 存档与提醒的注入。
+///
+/// 这些测试原来写不出来 —— 存档是 init 里的 30 行内联代码，
+/// 提醒是 `persist()` 里的硬编码副作用，只能用 bool 开关绕过。
+@MainActor
+final class PetPersistenceTests: XCTestCase {
+
+    /// 每次状态变更都要落盘 —— 分散写会漏，所以统一在 persist()
+    func testEveryMutationPersists() {
+        let mem = MemoryPersistence()
+        let store = Fixture.store(persistence: mem)
+        let baseline = mem.petSaveCount
+
+        store.play()
+        XCTAssertGreaterThan(mem.petSaveCount, baseline, "互动应落盘")
+
+        let afterPlay = mem.petSaveCount
+        store.rename("新名字")
+        XCTAssertGreaterThan(mem.petSaveCount, afterPlay, "改名应落盘")
+    }
+
+    /// 钱包和宠物是两份存档 —— 换宠物不该清空钱包
+    func testWalletAndPetAreSeparate() {
+        let mem = MemoryPersistence()
+        let store = Fixture.store(persistence: mem)
+        store.play()
+
+        XCTAssertNotNil(mem.loadPet())
+        XCTAssertNotNil(mem.loadWallet())
+    }
+
+    /// 加载已有存档：不该覆盖成默认值
+    func testLoadsExistingSave() {
+        var pet = PetState()
+        pet.name = "已存在"
+        let mem = MemoryPersistence(pet: pet, wallet: PetWallet())
+
+        let store = Fixture.store(persistence: mem)
+        XCTAssertEqual(store.pet.name, "已存在")
+    }
+
+    /// 空存档：给默认宠物而不是崩
+    func testEmptySaveYieldsDefaults() {
+        let store = Fixture.store(persistence: MemoryPersistence())
+        XCTAssertEqual(store.pet.breedID, PetBreed.cat.id)
+        XCTAssertEqual(store.wallet.coins, PetWallet.initialCoins)
+    }
+
+    /// **提醒是注入的** —— 状态变更会触发重排，但测试里不碰系统通知
+    func testRemindersRescheduledOnMutation() {
+        let noop = NoopReminders()
+        let store = PetStore(storage: MemoryPersistence(),
+                             reminders: noop,
+                             runsHeartbeat: false)
+        let before = noop.rescheduleCount
+
+        store.play()
+        XCTAssertGreaterThan(noop.rescheduleCount, before,
+                             "状态变了要重排提醒（何时会饿是算出来的）")
+    }
+
+    /// 内存实现和文件实现行为一致 —— 否则测试通过但线上出错
+    func testMemoryAndFileBehaveSame() {
+        let dir = Fixture.tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        for storage in [MemoryPersistence() as PetPersistence,
+                        FilePersistence(directory: dir)] {
+            let store = Fixture.store(persistence: storage)
+            store.rename("一致性")
+            XCTAssertEqual(store.pet.name, "一致性")
+
+            // 重新加载应拿到同样的值
+            XCTAssertEqual(storage.loadPet()?.name, "一致性")
+        }
     }
 }
