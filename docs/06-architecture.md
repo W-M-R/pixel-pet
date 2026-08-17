@@ -99,6 +99,7 @@ public，是全方案的一半成本、80% 的实际收益）。上面修循环�
 | `PetBreed` | 品种注册表（属性、经济、布局引用） | `all` 加一条 + 跑素材脚本 |
 | `PetSheetLayout` | **帧布局 per-breed**：格尺寸、毛色数、走路帧序、行语义、footPadding | 加一个 `static let`，不改渲染代码 |
 | `PetActor` | **一只宠物在场景里的全部表现**：节点、影子、食盆、朝向、行为状态机 | 不用改 —— 场景按存档 diff 自动增删 |
+| `FurnitureItem` + `ShopCategory` | 家具注册表（价格、sheet 索引、吃饭位）与商店分类 | 表里加一条 + 跑 `make_furniture.py` |
 | `PetStage` | 生命阶段的全部参数（额度、周期、体型、sheet 后缀） | 四档写死，加档要同时改帧派生脚本 |
 | `StateThreshold` | 「多饿才算饿」原来散在 4 处，其中中英文 prompt 各一份必须手动同步 | 改一处 |
 | `Pixel` + `PixelPanel` / `PixelBar` | UI 的网格、配色、字号、组件 | 用 token，不写字面量 |
@@ -169,7 +170,7 @@ public，是全方案的一半成本、80% 的实际收益）。上面修循环�
 | 钱堆 | `EarningsView` | 余额、今日额度、收支构成、流水 |
 | ♥ 需求 | （只读） | 当前最紧急的需求，不可点 |
 | ★ | `AchievementsView` | 29 条成就与进度，点一条看解锁条件 |
-| 店铺 | `ShopView` | 可购买品种 |
+| 店铺 | `ShopView` | 三个分类：宠物 / 用品（碗）/ 装饰（床、盆栽） |
 | 爪印 | `PetsView` | 状态、起名、品种毛色、成长、陪伴记录 |
 | 齿轮 | `PetSettingsView` | **只有应用级偏好**：通知、语言、素材授权 |
 

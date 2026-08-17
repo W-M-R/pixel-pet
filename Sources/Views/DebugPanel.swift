@@ -199,6 +199,7 @@ struct CoinTraceView: View {
         case .food:           return "买食物"
         case .starterPet:     return "首只宠物"
         case .breedPurchase:  return "买品种"
+        case .furniture:      return "买家具"
         case .debugGrant:     return "调试发钱"
         }
     }

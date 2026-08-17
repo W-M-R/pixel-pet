@@ -32,6 +32,31 @@ enum RoomSpriteSheet {
         }
     }
 
+    /// 从自绘的侧视家具 sheet 取一件。
+    ///
+    /// 布局：每件占 2 格宽的位置（64px），1 格宽的家具画在左半边。
+    /// 索引与 `tools/make_furniture.py` 的 `ORDER` 一一对应，
+    /// 也与 `FurnitureItem.sheetIndex` 一致（由测试锁住）。
+    static func furnitureTexture(from sheet: SKTexture,
+                                 index: Int,
+                                 cellWidth: Int) -> SKTexture? {
+        let cell = FurnitureItem.cell
+        let slot = cell * 2                     // 每件的格位宽度
+        let sheetW = sheet.size().width
+        let sheetH = sheet.size().height
+        guard sheetW > 0, sheetH > 0 else { return nil }
+
+        let x = CGFloat(index) * slot
+        let w = cell * CGFloat(cellWidth)
+        guard x + w <= sheetW + 0.5 else { return nil }
+
+        let rect = CGRect(x: x / sheetW, y: 0,
+                          width: w / sheetW, height: cell / sheetH)
+        let tex = SKTexture(rect: rect, in: sheet)
+        tex.filteringMode = .nearest
+        return tex
+    }
+
     /// 按像素矩形取图。左上原点 → SpriteKit 左下原点的翻转在这里统一处理。
     static func furnitureTexture(from sheet: SKTexture, _ item: Furniture) -> SKTexture {
         let sheetW = sheet.size().width

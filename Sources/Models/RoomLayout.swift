@@ -57,6 +57,40 @@ final class RoomStore {
         persist()
     }
 
+    /// 买了家具后摆进房间。
+    ///
+    /// 默认位置按已有件数错开 —— 全摆同一个 x 会叠在一起，
+    /// 而玩家得先拖开才看得清买了什么。
+    func place(_ item: FurnitureItem) {
+        guard !layout.slots.contains(where: { $0.id == item.id }) else { return }
+        // 0.22 / 0.42 / 0.62 / 0.82 依次排开
+        let ratio = min(0.82, 0.22 + Double(layout.slots.count) * 0.20)
+        layout.slots.append(RoomLayout.Slot(
+            id: item.id, xRatio: ratio, yOffset: 0,
+            scaleMul: 1, z: item.isBowl ? 8 : 7))
+        persist()
+    }
+
+    /// 把已购家具同步进布局。
+    ///
+    /// 幂等 —— 每次启动都调，补上「买过但布局里没有」的
+    /// （比如从旧存档升级过来，或 room.json 被重置过）。
+    func sync(owned: Set<String>) {
+        for id in owned.sorted() {
+            guard let item = FurnitureItem.byID(id) else { continue }
+            place(item)
+        }
+        // 反向清理：布局里有但已经不拥有的（正常不会发生，防脏数据）
+        let before = layout.slots.count
+        layout.slots.removeAll { !owned.contains($0.id) }
+        if layout.slots.count != before { persist() }
+    }
+
+    /// 某件家具当前的 xRatio。找不到返回 nil。
+    func xRatio(of id: String) -> Double? {
+        layout.slots.first { $0.id == id }?.xRatio
+    }
+
     func reset() {
         layout = .default
         persist()

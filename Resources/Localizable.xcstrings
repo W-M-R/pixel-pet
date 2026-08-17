@@ -1489,6 +1489,22 @@
         }
       }
     },
+    "coin.reason.furniture": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Furniture"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "买家具"
+          }
+        }
+      }
+    },
     "coin.reason.initialGrant": {
       "localizations": {
         "en": {
@@ -1901,6 +1917,118 @@
           "stringUnit": {
             "state": "translated",
             "value": "喂点什么？"
+          }
+        }
+      }
+    },
+    "furn.bed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pet bed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "宠物床"
+          }
+        }
+      }
+    },
+    "furn.bowl": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Round bowl"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "圆碗"
+          }
+        }
+      }
+    },
+    "furn.decor_only": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Decorative — long-press to move"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "纯装饰，可长按拖动"
+          }
+        }
+      }
+    },
+    "furn.long_bowl": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Long bowl"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "小长碗"
+          }
+        }
+      }
+    },
+    "furn.owned": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Owned"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已拥有"
+          }
+        }
+      }
+    },
+    "furn.plant": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potted plant"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "盆栽"
+          }
+        }
+      }
+    },
+    "furn.slots": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feeds %d pets at once"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可同时 %d 只吃饭"
           }
         }
       }
@@ -3520,6 +3648,54 @@
         }
       }
     },
+    "shop.category.decor": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Decor"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "装饰"
+          }
+        }
+      }
+    },
+    "shop.category.pet": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pets"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "宠物"
+          }
+        }
+      }
+    },
+    "shop.category.supply": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supplies"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用品"
+          }
+        }
+      }
+    },
     "shop.empty": {
       "extractionState": "manual",
       "localizations": {
@@ -3600,6 +3776,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "解锁新宠物"
+          }
+        }
+      }
+    },
+    "shop.tip_drag": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Long-press to reposition after buying"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "买了之后长按可以拖动位置"
           }
         }
       }

@@ -342,3 +342,85 @@ final class PetActorTests: XCTestCase {
         XCTAssertGreaterThan(a.scale(atDepth: 0), a.scale(atDepth: 1))
     }
 }
+
+/// 饭碗的吃饭位排布。
+///
+/// 场景层的行为没法在单测里跑（要 SKView 生命周期），
+/// 但**位置计算是纯几何**，可以单独验证。
+/// 这里锁住「按侧视排位」这个决定：只排左右，不排上下。
+final class BowlSlotLayoutTests: XCTestCase {
+
+    /// 复现 `PetScene.gatherToBowl` 的排位公式。
+    ///
+    /// ⚠️ 这是**复制**而非调用 —— 场景方法是 private 且需要 SKScene。
+    /// 公式改了这里不会自动跟着改，所以下面断言的是「性质」
+    /// （左右交替、外圈更远、不重叠）而非具体数值，
+    /// 这样公式微调时测试不会假失败。
+    private func slotOffsets(count: Int, cellWidth: Int) -> [(dx: CGFloat, dy: CGFloat)] {
+        let u = FurnitureItem.displayScale
+        return (0..<count).map { i in
+            let side: CGFloat = (i % 2 == 0) ? -1 : 1
+            let rank = CGFloat(i / 2)
+            let dx = side * u * (CGFloat(cellWidth) * 8 + 9 + rank * 7)
+            let dy = rank * u * 3
+            return (dx, dy)
+        }
+    }
+
+    /// 圆碗 2 位：一左一右，且左右对称
+    func testRoundBowlPutsPetsOnBothSides() {
+        let offs = slotOffsets(count: FurnitureItem.bowl.feedSlots,
+                               cellWidth: FurnitureItem.bowl.cellWidth)
+        XCTAssertEqual(offs.count, 2)
+        XCTAssertLessThan(offs[0].dx, 0, "第一只该在左边")
+        XCTAssertGreaterThan(offs[1].dx, 0, "第二只该在右边")
+        XCTAssertEqual(abs(offs[0].dx), abs(offs[1].dx), accuracy: 0.01,
+                       "两侧该对称")
+        // 都在同一条线上（圆碗只有内圈）
+        XCTAssertEqual(offs[0].dy, 0, accuracy: 0.01)
+        XCTAssertEqual(offs[1].dy, 0, accuracy: 0.01)
+    }
+
+    /// 长碗 4 位：左右各两，外圈更远且往前站一点
+    func testLongBowlStaggersOuterRing() {
+        let item = FurnitureItem.longBowl
+        let offs = slotOffsets(count: item.feedSlots, cellWidth: item.cellWidth)
+        XCTAssertEqual(offs.count, 4)
+
+        // 0/2 在左，1/3 在右
+        XCTAssertLessThan(offs[0].dx, 0)
+        XCTAssertGreaterThan(offs[1].dx, 0)
+        XCTAssertLessThan(offs[2].dx, 0)
+        XCTAssertGreaterThan(offs[3].dx, 0)
+
+        // 外圈比内圈远
+        XCTAssertGreaterThan(abs(offs[2].dx), abs(offs[0].dx),
+                             "外圈该站得更远，否则会和内圈重叠")
+        XCTAssertGreaterThan(offs[2].dy, offs[0].dy,
+                             "外圈该往前错开一点")
+    }
+
+    /// **任意两只都不能站同一个点** —— 否则视觉上叠在一起
+    func testNoTwoPetsShareASlot() {
+        for item in FurnitureItem.all where item.isBowl {
+            let offs = slotOffsets(count: item.feedSlots, cellWidth: item.cellWidth)
+            for i in offs.indices {
+                for j in offs.indices where j > i {
+                    let dist = hypot(offs[i].dx - offs[j].dx,
+                                     offs[i].dy - offs[j].dy)
+                    XCTAssertGreaterThan(dist, 10,
+                                         "\(item.id) 的第 \(i)/\(j) 位太近（\(dist)）")
+                }
+            }
+        }
+    }
+
+    /// 长碗容量必须大于圆碗 —— 否则贵的那个没有理由买
+    func testLongBowlHoldsMoreThanRound() {
+        XCTAssertGreaterThan(FurnitureItem.longBowl.feedSlots,
+                             FurnitureItem.bowl.feedSlots)
+        XCTAssertGreaterThan(FurnitureItem.longBowl.price,
+                             FurnitureItem.bowl.price,
+                             "容量更大就该更贵")
+    }
+}

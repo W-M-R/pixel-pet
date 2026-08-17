@@ -11,6 +11,10 @@ import SwiftUI
 struct PetsView: View {
     let store: PetStore
 
+    /// 买了家具要摆进房间。由 `PetHomeView` 注入（它持有 roomStore）——
+    /// 不接的话从这个入口买碗会「买了但房间里没有」。
+    var onFurniturePlaced: ((FurnitureItem) -> Void)?
+
     @Environment(\.dismiss) private var dismiss
 
     @State private var now = Date()
@@ -47,7 +51,9 @@ struct PetsView: View {
                         .foregroundStyle(Pixel.coin.color)
                 }
             }
-            .sheet(isPresented: $showShop) { ShopView(store: store) }
+            .sheet(isPresented: $showShop) {
+                ShopView(store: store, onFurniturePlaced: onFurniturePlaced)
+            }
             // 状态是时间戳算出来的，进来时刷一次就够 ——
             // 这个页面不需要每秒跳动。
             .onAppear {

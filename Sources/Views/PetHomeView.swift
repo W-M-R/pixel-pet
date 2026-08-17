@@ -49,6 +49,8 @@ struct PetHomeView: View {
             needsOnboarding = store.needsOnboarding
 
             scene.scaleMode = .resizeFill
+            // 已购家具同步进布局 —— 幂等，补「买过但布局里没有」的情况
+            roomStore.sync(owned: store.wallet.ownedFurniture)
             scene.layout = roomStore.layout
             syncScenePet()
 
@@ -101,10 +103,10 @@ struct PetHomeView: View {
             EarningsView(store: store)
         }
         .sheet(isPresented: $showPets) {
-            PetsView(store: store)
+            PetsView(store: store, onFurniturePlaced: placeFurniture)
         }
         .sheet(isPresented: $showShop) {
-            ShopView(store: store)
+            ShopView(store: store, onFurniturePlaced: placeFurniture)
         }
         .sheet(isPresented: $showAchievements) {
             AchievementsView(store: store)
@@ -131,6 +133,15 @@ struct PetHomeView: View {
             }
             .interactiveDismissDisabled()
         }
+    }
+
+    /// 买了家具 -> 摆进房间 -> 重建家具层。
+    ///
+    /// 只重建家具不动宠物 —— 免得打断它当前的行为。
+    private func placeFurniture(_ item: FurnitureItem) {
+        roomStore.place(item)
+        scene.layout = roomStore.layout
+        scene.rebuildRoom()
     }
 
     /// 把**全部**宠物同步给场景。

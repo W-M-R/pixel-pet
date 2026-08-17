@@ -34,6 +34,9 @@ enum CoinReason: String, Codable, CaseIterable, Sendable {
     /// 商店买新品种
     case breedPurchase
 
+    /// 买家具（用品/装饰）
+    case furniture
+
     // MARK: 调试
 
     /// 调试面板发钱。**只在 DEBUG 构建可用**，见 `PetStore.debugGrant`。
@@ -47,7 +50,7 @@ enum CoinReason: String, Codable, CaseIterable, Sendable {
         switch self {
         case .offlineCare, .loginBonus, .achievement, .initialGrant, .debugGrant:
             return true
-        case .food, .starterPet, .breedPurchase:
+        case .food, .starterPet, .breedPurchase, .furniture:
             return false
         }
     }

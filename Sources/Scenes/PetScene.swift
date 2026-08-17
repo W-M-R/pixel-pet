@@ -117,6 +117,8 @@ final class PetScene: SKScene {
     /// 布局变了以后重建房间（改布局/重置时调用）。
     /// 只重建家具，不动宠物，免得打断它当前的行为。
     func rebuildRoom() {
+        bowlNode = nil
+        bowlItem = nil
         for node in furnitureNodes { node.removeFromParent() }
         furnitureNodes.removeAll()
         guard let roomSheet, size.width > 1 else { return }
@@ -180,7 +182,9 @@ final class PetScene: SKScene {
         removeAllChildren()
         guard size.width > 1 else { return }
 
-        roomSheet = RoomSpriteSheet.loadSheet(named: "house_objects")
+        // 自绘的侧视家具。原来是 house_objects.png（OGA，俯视）——
+        // 和侧视宠物放一起怎么摆都别扭，见 RoomLayout.default 的注释。
+        roomSheet = RoomSpriteSheet.loadSheet(named: "furniture")
         emoteSheet = RoomSpriteSheet.loadSheet(named: "emotes")
         iconSheet = RoomSpriteSheet.loadSheet(named: "icons")
 
@@ -234,23 +238,45 @@ final class PetScene: SKScene {
 
     /// 家具锚点设在**底部中心**，这样 yOffset 直接就是「底边离墙脚线多高」，
     /// 不用为每件家具单独算高度的一半。
+    /// 摆一件家具。
+    ///
+    /// 素材是**侧视**的自绘 sheet（`Assets/room/furniture.png`）——
+    /// 原来用的 OGA Home Objects 是俯视的，和侧视宠物放一起
+    /// 「怎么摆都别扭」，见 `RoomLayout.default` 的注释。
     private func addFurniture(_ slot: RoomLayout.Slot,
                               sheet: SKTexture,
                               scale: CGFloat) {
-        guard let item = RoomSpriteSheet.Furniture(rawValue: slot.id) else { return }
-        let node = SKSpriteNode(texture: RoomSpriteSheet.furnitureTexture(from: sheet, item))
+        guard let item = FurnitureItem.byID(slot.id),
+              let tex = RoomSpriteSheet.furnitureTexture(
+                from: sheet, index: item.sheetIndex, cellWidth: item.cellWidth)
+        else { return }
+
+        let node = SKSpriteNode(texture: tex)
         node.texture?.filteringMode = .nearest
-        // 地毯平铺在地上，用中心锚点；其余家具立着，用底部锚点，
-        // 这样 yOffset 的语义就是「底边离墙脚线多高」。
-        node.anchorPoint = item == .rug ? CGPoint(x: 0.5, y: 0.5)
-                                        : CGPoint(x: 0.5, y: 0)
-        node.setScale(scale * slot.scaleMul)
+        // 底部锚点 —— 家具贴地，这样位置的语义就是「底边站在哪」
+        node.anchorPoint = CGPoint(x: 0.5, y: 0)
+        node.setScale(FurnitureItem.displayScale * slot.scaleMul)
+        // 摆在地板靠前的位置，宠物能走到它两侧
         node.position = CGPoint(x: size.width * slot.xRatio,
-                                y: wallBaseY + slot.yOffset)
+                                y: floor.y(atDepth: 0.55) + slot.yOffset)
         node.zPosition = slot.z
         node.name = slot.id
         addChild(node)
         furnitureNodes.append(node)
+
+        if item.isBowl {
+            bowlNode = node
+            bowlItem = item
+        }
+    }
+
+    /// 当前的饭碗节点与规格。没买碗时是 nil。
+    private var bowlNode: SKNode?
+    private var bowlItem: FurnitureItem?
+
+    /// 碗底所在的 y —— 宠物要站在同一条线上才像在一起吃
+    private var bowlFootY: CGFloat {
+        bowlNode?.position.y ?? floor.y(atDepth: 0.55)
     }
 
     /// 墙 + 地板。
@@ -303,6 +329,10 @@ final class PetScene: SKScene {
                     a.behavior = .idle
                     a.applyIdlePose()
                     a.nextDecisionAt = time + .random(in: 1.2...3.5)
+                }
+            case .walkingToBowl(let target):
+                if moveToward(a, target: target, speed: followSpeed, dt: dt) {
+                    startChewing(a)
                 }
             case .eating, .startled, .sleeping:
                 break
@@ -429,9 +459,67 @@ final class PetScene: SKScene {
 
     // MARK: - 外部触发
 
-    /// 喂食。作用于**选中那只** —— 三个互动按钮都是。
+    /// 喂食。
+    ///
+    /// **有饭碗时所有宠物围过来吃**（按碗的容量排位），
+    /// 没碗时回退到「在选中那只脚边放个临时食盆」的老行为。
+    ///
+    /// 容量按侧视排：宠物头只能朝左右，站在碗上方/下方会像叠在碗上。
+    /// 所以只排左右两侧 —— 圆碗 2 位，长碗 4 位（左右各两、前后微错开）。
     func triggerEat() {
-        guard let a = selected else { return }
+        if let bowl = bowlNode, let item = bowlItem {
+            gatherToBowl(bowl, item: item)
+        } else if let a = selected {
+            feedInPlace(a)
+        }
+    }
+
+    /// 围到碗边吃。
+    private func gatherToBowl(_ bowl: SKNode, item: FurnitureItem) {
+        touchPoint = nil
+        bubbles?.uiIcon(0)
+
+        // 按「离碗近的先来」排队，容量满了的这次就不吃 ——
+        // 比随机挑更符合直觉（近的先到）。
+        let queue = actors.sorted {
+            abs($0.node.position.x - bowl.position.x)
+                < abs($1.node.position.x - bowl.position.x)
+        }
+
+        for (i, a) in queue.enumerated() where i < item.feedSlots {
+            // 左右交替：0→左, 1→右, 2→左更外, 3→右更外
+            let side: CGFloat = (i % 2 == 0) ? -1 : 1
+            let rank = CGFloat(i / 2)
+            let u = FurnitureItem.displayScale
+            // 碗半宽 + 宠物半身 + 间隙，外圈再往外让一点
+            let dx = side * u * (CGFloat(item.cellWidth) * 8 + 9 + rank * 7)
+            // 外圈往前站一点，避免和内圈完全同一条线上
+            let dy = rank * u * 3
+
+            let target = floor.clamp(CGPoint(x: bowl.position.x + dx,
+                                             y: bowlFootY + dy))
+            a.behavior = .walkingToBowl(target: target)
+            updateFacing(a, toward: bowl.position)
+            a.applyWalkAnimation()
+        }
+    }
+
+    /// 到碗边了，开始咀嚼。
+    private func startChewing(_ a: PetActor) {
+        a.behavior = .eating
+        // 面朝碗
+        if let bowl = bowlNode {
+            a.facing = bowl.position.x >= a.node.position.x ? .right : .left
+        }
+        a.applyEatAnimation { [weak a] in
+            a?.behavior = .idle
+            a?.nextDecisionAt = 0
+            a?.applyIdlePose()
+        }
+    }
+
+    /// 没买碗时的老行为：在脚边放个临时食盆。
+    private func feedInPlace(_ a: PetActor) {
         a.behavior = .eating
         touchPoint = nil
         // 睡姿改过 yScale，先复位再放盆，否则 feetY 算出来是压扁后的位置
@@ -441,8 +529,8 @@ final class PetScene: SKScene {
         // 像素肉图标（icons.png 第 0 格）。原来是 🍖 emoji ——
         // emoji 字形随 iOS 版本变，缺字体时会渲染成问号。
         bubbles?.uiIcon(0)
-        a.applyEatAnimation { [weak self, weak a] in
-            guard let self, let a else { return }
+        a.applyEatAnimation { [weak a] in
+            guard let a else { return }
             a.clearFoodBowl()
             a.behavior = .idle
             a.nextDecisionAt = 0

@@ -48,6 +48,8 @@ final class PetActor {
         case wandering(target: CGPoint)
         case following
         case eating
+        /// 正在走向饭碗。到了才开始吃。
+        case walkingToBowl(target: CGPoint)
         case startled
         case sleeping
     }
@@ -271,6 +273,8 @@ final class PetActor {
         case .eating:
             // 咀嚼有完成回调驱动状态退出，中途换帧会打断它。
             break
+        case .walkingToBowl:
+            applyWalkAnimation()
         }
     }
 

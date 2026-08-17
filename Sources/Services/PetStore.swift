@@ -433,6 +433,30 @@ final class PetStore {
 
     func owns(_ breed: PetBreed) -> Bool { wallet.owns(breed) }
 
+    /// 买家具。一次性解锁 —— 买过再买没有意义。
+    ///
+    /// 摆进房间由 UI 层调 `RoomStore.place` —— 布局是另一份存档
+    /// （改动频率高很多），store 不持有它。
+    @discardableResult
+    func purchase(_ item: FurnitureItem) -> Bool {
+        guard !wallet.owns(item) else { return false }
+        guard wallet.purchase(item) else { return false }
+        persist()
+        return true
+    }
+
+    func owns(_ item: FurnitureItem) -> Bool { wallet.owns(item) }
+
+    /// 已拥有的碗里容量最大的那个。nil = 还没买碗。
+    ///
+    /// 喂食时用它决定「几只能同时过来吃」。买了长碗就用长碗 ——
+    /// 不做「选用哪个碗」的设置，那是没必要的决策负担。
+    var activeBowl: FurnitureItem? {
+        FurnitureItem.all
+            .filter { $0.isBowl && wallet.owns($0) }
+            .max { $0.feedSlots < $1.feedSlots }
+    }
+
     /// 调试用：把时间戳往前推，模拟放置一段时间后的状态。
     /// 这是验证「读时算」是否正确的最快方式。
     #if DEBUG

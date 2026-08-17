@@ -51,6 +51,12 @@ struct PetWallet: Codable, Equatable {
     /// 「买」是一次性解锁，不是消耗品。
     var ownedBreeds: Set<String>
 
+    /// 已购家具的 id（含用品与装饰）。
+    ///
+    /// 和 `ownedBreeds` 分开：宠物买一次多一只（可以买重复的），
+    /// 家具是**一次性解锁**（买了就摆在房间里，再买没有意义）。
+    var ownedFurniture: Set<String>
+
     /// 是否已完成开局（选宠物 + 起名）。
     ///
     /// 存在钱包而非 PetState —— 重置宠物不该让人重走开局流程，
@@ -86,6 +92,7 @@ struct PetWallet: Codable, Equatable {
         lastEarnDate = now
         claimedRewards = []
         ownedBreeds = []
+        ownedFurniture = []
         hasCompletedOnboarding = false
     }
 
@@ -113,6 +120,25 @@ struct PetWallet: Codable, Equatable {
                         at: now, note: breed.id) else { return false }
         }
         ownedBreeds.insert(breed.id)
+        return true
+    }
+
+    /// 是否已拥有某件家具
+    func owns(_ item: FurnitureItem) -> Bool {
+        ownedFurniture.contains(item.id)
+    }
+
+    func canAfford(_ item: FurnitureItem) -> Bool {
+        ledger.canAfford(item.price)
+    }
+
+    /// 买家具。一次性解锁，买过再买直接成功（幂等）。
+    @discardableResult
+    mutating func purchase(_ item: FurnitureItem, at now: Date = Date()) -> Bool {
+        guard !owns(item) else { return true }
+        guard spend(item.price, reason: .furniture,
+                    at: now, note: item.id) else { return false }
+        ownedFurniture.insert(item.id)
         return true
     }
 
@@ -208,7 +234,7 @@ struct PetWallet: Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case coins, lastCollectedAt, boostUntil, totalEarned
         case todayEarned, todayEarnedByPet, lastEarnDate, claimedRewards
-        case ownedBreeds, hasCompletedOnboarding
+        case ownedBreeds, ownedFurniture, hasCompletedOnboarding
         case ledger
     }
 
@@ -237,6 +263,8 @@ struct PetWallet: Codable, Equatable {
         lastEarnDate = try c.decodeIfPresent(Date.self, forKey: .lastEarnDate) ?? .distantPast
         claimedRewards = try c.decodeIfPresent(Set<String>.self, forKey: .claimedRewards) ?? []
         ownedBreeds = try c.decodeIfPresent(Set<String>.self, forKey: .ownedBreeds) ?? []
+        ownedFurniture = try c.decodeIfPresent(Set<String>.self,
+                                               forKey: .ownedFurniture) ?? []
         // 旧存档没有这个字段。如果已经有宠物在养（钱包被用过），
         // 视为已完成开局，不该把老用户拉回选宠界面。
         if let done = try c.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) {
@@ -263,6 +291,7 @@ struct PetWallet: Codable, Equatable {
         try c.encode(lastEarnDate, forKey: .lastEarnDate)
         try c.encode(claimedRewards, forKey: .claimedRewards)
         try c.encode(ownedBreeds, forKey: .ownedBreeds)
+        try c.encode(ownedFurniture, forKey: .ownedFurniture)
         try c.encode(hasCompletedOnboarding, forKey: .hasCompletedOnboarding)
     }
 }

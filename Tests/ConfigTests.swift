@@ -652,3 +652,174 @@ final class ReminderThresholdTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "notifyThresholdSatiety")
     }
 }
+
+/// 家具与商店分类。
+final class FurnitureTests: XCTestCase {
+
+    /// sheet 索引必须和生成脚本的 ORDER 一致。
+    ///
+    /// 两边是**同一张图的格位**，脚本改了顺序而 Swift 没跟着改，
+    /// 就会「买了床摆出个碗」。加家具只能追加到末尾。
+    func testSheetIndicesMatchScript() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let script = try String(
+            contentsOf: root.appendingPathComponent("tools/make_furniture.py"),
+            encoding: .utf8)
+
+        // 从脚本里抓 ORDER = [...]
+        guard let r = script.range(of: "ORDER = ["),
+              let end = script.range(of: "]", range: r.upperBound..<script.endIndex)
+        else { return XCTFail("脚本里找不到 ORDER") }
+        let ids = script[r.upperBound..<end.lowerBound]
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: " '\"\n")) }
+            .filter { !$0.isEmpty }
+
+        for item in FurnitureItem.all {
+            guard item.sheetIndex < ids.count else {
+                return XCTFail("\(item.id) 的 sheetIndex \(item.sheetIndex) 超出脚本 ORDER")
+            }
+            XCTAssertEqual(ids[item.sheetIndex], item.id,
+                           "索引 \(item.sheetIndex) 脚本里是 \(ids[item.sheetIndex])，"
+                           + "Swift 里是 \(item.id)")
+        }
+    }
+
+    /// sheet 实际尺寸要能放下所有家具
+    func testSheetIsBigEnough() throws {
+        let url = Bundle.main.url(forResource: "furniture", withExtension: "png")
+        let path = try XCTUnwrap(url, "找不到 furniture.png")
+        let img = try XCTUnwrap(UIImage(contentsOfFile: path.path))
+
+        let slot = FurnitureItem.cell * 2
+        let needed = slot * CGFloat(FurnitureItem.all.count)
+        XCTAssertGreaterThanOrEqual(img.size.width, needed,
+                                    "sheet 宽 \(img.size.width) 放不下 "
+                                    + "\(FurnitureItem.all.count) 件")
+        XCTAssertEqual(img.size.height, FurnitureItem.cell)
+    }
+
+    /// 碗的容量按侧视定 —— 只排左右两侧，不排上下
+    func testBowlCapacities() {
+        XCTAssertEqual(FurnitureItem.bowl.feedSlots, 2, "圆碗左右各一")
+        XCTAssertEqual(FurnitureItem.longBowl.feedSlots, 4, "长碗左右各两")
+        XCTAssertTrue(FurnitureItem.bowl.isBowl)
+        XCTAssertFalse(FurnitureItem.bed.isBowl, "床是装饰，没有吃饭位")
+        XCTAssertFalse(FurnitureItem.plant.isBowl)
+    }
+
+    /// 装饰品不该有吃饭位，用品才有
+    func testCategoriesMatchFunction() {
+        for item in FurnitureItem.all {
+            switch item.category {
+            case .supply:
+                XCTAssertTrue(item.isBowl, "\(item.id) 在用品分类却没有功能")
+            case .decor:
+                XCTAssertFalse(item.isBowl, "\(item.id) 是装饰却有吃饭位")
+            case .pet:
+                XCTFail("家具不该归到宠物分类")
+            }
+        }
+    }
+
+    /// 每件家具与每个分类都要有译文
+    func testFurnitureIsLocalized() {
+        for item in FurnitureItem.all {
+            XCTAssertNotEqual(L(item.nameKey), item.nameKey,
+                              "\(item.id) 缺译文")
+        }
+        for c in ShopCategory.allCases {
+            XCTAssertNotEqual(L(c.nameKey), c.nameKey, "\(c.rawValue) 缺译文")
+        }
+    }
+
+    /// id 与索引都不能重复
+    func testNoDuplicates() {
+        let ids = FurnitureItem.all.map(\.id)
+        XCTAssertEqual(Set(ids).count, ids.count, "id 重复")
+        let idx = FurnitureItem.all.map(\.sheetIndex)
+        XCTAssertEqual(Set(idx).count, idx.count, "sheetIndex 重复 —— 会取到同一张图")
+    }
+
+    /// 家具尺寸不能占掉半个屏幕
+    func testDisplayScaleKeepsFurnitureReasonable() {
+        // iPhone 15 Pro Max 逻辑宽 440pt
+        let screenW: CGFloat = 440
+        for item in FurnitureItem.all {
+            let w = FurnitureItem.cell * CGFloat(item.cellWidth)
+                * FurnitureItem.displayScale
+            XCTAssertLessThan(w / screenW, 0.5,
+                              "\(item.id) 宽 \(w)pt，占了屏宽一半以上")
+        }
+    }
+}
+
+/// 家具的购买与摆放。
+@MainActor
+final class FurniturePurchaseTests: StoreTestCase {
+
+    func testBuyingFurnitureDeductsAndUnlocks() {
+        let s = makeStore()
+        var w = s.wallet
+        w.debugSetCoins(5000)
+        s.debugSet(wallet: w)
+
+        XCTAssertFalse(s.owns(FurnitureItem.bowl))
+        XCTAssertTrue(s.purchase(FurnitureItem.bowl))
+        XCTAssertTrue(s.owns(FurnitureItem.bowl))
+        XCTAssertEqual(s.wallet.coins, 5000 - FurnitureItem.bowl.price)
+        XCTAssertTrue(s.wallet.ledger.isBalanced)
+        XCTAssertEqual(s.wallet.ledger.recent.last?.reason, .furniture)
+    }
+
+    /// **家具是一次性解锁** —— 买过再买该失败（否则白扣钱）
+    func testCannotBuyTwice() {
+        let s = makeStore()
+        var w = s.wallet
+        w.debugSetCoins(5000)
+        s.debugSet(wallet: w)
+
+        XCTAssertTrue(s.purchase(FurnitureItem.plant))
+        let after = s.wallet.coins
+        XCTAssertFalse(s.purchase(FurnitureItem.plant), "重复购买该失败")
+        XCTAssertEqual(s.wallet.coins, after, "重复购买不该再扣")
+    }
+
+    func testCannotAffordFails() {
+        let s = makeStore()
+        var w = s.wallet
+        w.debugSetCoins(10)
+        s.debugSet(wallet: w)
+        XCTAssertFalse(s.purchase(FurnitureItem.bed))
+        XCTAssertFalse(s.owns(FurnitureItem.bed))
+    }
+
+    /// **买了长碗就用长碗** —— 取容量最大的那个，不做「选哪个碗」的设置
+    func testActiveBowlPicksLargestCapacity() {
+        let s = makeStore()
+        var w = s.wallet
+        w.debugSetCoins(20000)
+        s.debugSet(wallet: w)
+
+        XCTAssertNil(s.activeBowl, "没买碗时该是 nil")
+
+        s.purchase(FurnitureItem.bowl)
+        XCTAssertEqual(s.activeBowl?.id, "bowl")
+
+        s.purchase(FurnitureItem.longBowl)
+        XCTAssertEqual(s.activeBowl?.id, "long_bowl", "有长碗就用长碗")
+        XCTAssertEqual(s.activeBowl?.feedSlots, 4)
+    }
+
+    /// 装饰品不算碗
+    func testDecorIsNotABowl() {
+        let s = makeStore()
+        var w = s.wallet
+        w.debugSetCoins(20000)
+        s.debugSet(wallet: w)
+        s.purchase(FurnitureItem.bed)
+        s.purchase(FurnitureItem.plant)
+        XCTAssertNil(s.activeBowl, "买了床和盆栽不该有饭碗")
+    }
+}

@@ -162,3 +162,50 @@ struct CoatPicker: View {
         }
     }
 }
+
+/// 家具预览图。
+///
+/// 和 `BreedPortrait` 同样的做法：`Assets/` 是 raw resources 不是
+/// asset catalog，所以 `Image("furniture")` 找不到 ——
+/// 必须走 `Bundle` + `UIImage` + `cgImage.cropping`。
+struct FurniturePreview: View {
+    let item: FurnitureItem
+    let height: CGFloat
+
+    /// 按 id 缓存 —— 商店列表会反复重建 View
+    private static var cache: [String: Image] = [:]
+
+    var body: some View {
+        if let img = Self.crop(item) {
+            img.interpolation(.none)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: height * CGFloat(item.cellWidth), height: height)
+        } else {
+            // 取不到就留空位，不崩也不显示占位符 ——
+            // 占位符比空白更显眼，而这是「素材缺失」的开发期问题
+            Color.clear
+                .frame(width: height * CGFloat(item.cellWidth), height: height)
+        }
+    }
+
+    private static func crop(_ item: FurnitureItem) -> Image? {
+        if let hit = cache[item.id] { return hit }
+
+        guard let url = Bundle.main.url(forResource: "furniture",
+                                        withExtension: "png"),
+              let data = try? Data(contentsOf: url),
+              let full = UIImage(data: data),
+              let cg = full.cgImage else { return nil }
+
+        let cell = Int(FurnitureItem.cell)
+        let slot = cell * 2                      // 每件占 2 格宽的位置
+        let rect = CGRect(x: item.sheetIndex * slot, y: 0,
+                          width: cell * item.cellWidth, height: cell)
+        guard let cropped = cg.cropping(to: rect) else { return nil }
+
+        let img = Image(uiImage: UIImage(cgImage: cropped))
+        cache[item.id] = img
+        return img
+    }
+}

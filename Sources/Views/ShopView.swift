@@ -15,6 +15,11 @@ struct ShopView: View {
     @State private var toast: String?
     /// 每个品种各自选中的毛色。**毛色在购买时定死**，所以要在这里选。
     @State private var coat: [String: Int] = [:]
+    @State private var category: ShopCategory = .pet
+
+    /// 买了家具要摆进房间。布局是另一份存档（改动频率高很多），
+    /// 所以由调用方传进来，store 不持有它。
+    var onFurniturePlaced: ((FurnitureItem) -> Void)?
 
     var body: some View {
         // 自带 NavigationStack —— 它现在总是以 sheet 出现（主页商店图标、
@@ -27,12 +32,28 @@ struct ShopView: View {
                 ScrollView {
                     VStack(spacing: Pixel.u(3)) {
                         header
+                        categoryPicker
 
-                        if PetBreed.purchasable.isEmpty {
-                            emptyState
-                        } else {
-                            ForEach(PetBreed.purchasable) { breed in
-                                row(breed)
+                        switch category {
+                        case .pet:
+                            if PetBreed.purchasable.isEmpty {
+                                emptyState
+                            } else {
+                                ForEach(PetBreed.purchasable) { breed in
+                                    row(breed)
+                                }
+                            }
+                        case .supply, .decor:
+                            let items = FurnitureItem.inCategory(category)
+                            if items.isEmpty {
+                                emptyState
+                            } else {
+                                Text(verbatim: L("shop.tip_drag"))
+                                    .font(Pixel.mono(Pixel.labelSize))
+                                    .foregroundStyle(Pixel.textDim.color)
+                                ForEach(items) { item in
+                                    furnitureRow(item)
+                                }
                             }
                         }
 
@@ -89,6 +110,98 @@ struct ShopView: View {
                 .multilineTextAlignment(.center)
         }
         .padding(Pixel.u(6))
+    }
+
+    /// 分类切换。三段而非 TabView —— 商品种类少，
+    /// 用 tab 会把「宠物」这个主要目标降级成同级选项。
+    private var categoryPicker: some View {
+        HStack(spacing: Pixel.u(1)) {
+            ForEach(ShopCategory.allCases) { c in
+                let picked = c == category
+                Button { category = c } label: {
+                    Text(verbatim: L(c.nameKey))
+                        .font(Pixel.mono(Pixel.bodySize,
+                                         picked ? .semibold : .regular))
+                        .foregroundStyle(picked ? Pixel.panel.color
+                                               : Pixel.textDim.color)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, Pixel.u(1.5))
+                        .background(picked ? Pixel.coin.color : Pixel.slotEmpty.color)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    /// 家具行。
+    ///
+    /// 和宠物行的关键差别：**家具是一次性解锁**，
+    /// 已拥有就不能再买（买了也没意义 —— 房间里已经有一件了）。
+    private func furnitureRow(_ item: FurnitureItem) -> some View {
+        let owned = store.owns(item)
+        let affordable = store.wallet.coins >= item.price
+
+        return VStack(spacing: Pixel.u(2)) {
+            HStack(spacing: Pixel.u(3)) {
+                FurniturePreview(item: item, height: Pixel.u(14))
+
+                VStack(alignment: .leading, spacing: Pixel.u(1)) {
+                    Text(verbatim: L(item.nameKey))
+                        .font(Pixel.mono(Pixel.bodySize, .bold))
+                        .foregroundStyle(Pixel.text.color)
+                    // 碗写容量，装饰写「纯装饰」—— 让「有没有用」一眼可见
+                    Text(verbatim: item.isBowl
+                         ? String(format: L("furn.slots"), item.feedSlots)
+                         : L("furn.decor_only"))
+                        .font(Pixel.mono(Pixel.labelSize))
+                        .foregroundStyle(item.isBowl ? Pixel.satiety.color
+                                                     : Pixel.textDim.color)
+                }
+                Spacer(minLength: 0)
+            }
+
+            Button {
+                guard !owned else { return }
+                guard affordable else {
+                    showToast(L("shop.cannot_afford"))
+                    return
+                }
+                if store.purchase(item) {
+                    onFurniturePlaced?(item)
+                    showToast(String(format: L("shop.purchased"), L(item.nameKey)))
+                }
+            } label: {
+                HStack(spacing: Pixel.u(1)) {
+                    if owned {
+                        Text(verbatim: L("furn.owned"))
+                            .font(Pixel.mono(Pixel.bodySize, .semibold))
+                            .foregroundStyle(Pixel.hygiene.color)
+                    } else {
+                        Text(verbatim: L("shop.adopt"))
+                            .font(Pixel.mono(Pixel.bodySize, .semibold))
+                            .foregroundStyle(Pixel.text.color)
+                        PixelIconView(icon: .coin, size: Pixel.u(3))
+                        Text(verbatim: "\(item.price)")
+                            .font(Pixel.mono(Pixel.bodySize, .semibold))
+                            .foregroundStyle(affordable ? Pixel.coin.color
+                                                        : Pixel.warn.color)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Pixel.u(2))
+                .background(
+                    PixelPanel(fill: owned ? Pixel.buttonDark : Pixel.button,
+                               lite: owned ? Pixel.buttonDark : Pixel.buttonLite,
+                               dark: Pixel.buttonDark)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(owned)
+        }
+        .padding(Pixel.u(2.5))
+        .background(PixelPanel(fill: Pixel.panelDark,
+                               lite: Pixel.panel,
+                               dark: Pixel.panelDark))
     }
 
     private func row(_ breed: PetBreed) -> some View {
