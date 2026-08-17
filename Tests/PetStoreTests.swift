@@ -877,3 +877,244 @@ final class DebugToolTests: StoreTestCase {
         XCTAssertEqual(s.pet.breedID, "cat", "删掉狗后应选中剩下的猫")
     }
 }
+
+/// 房间布局存档。
+///
+/// 这个类原来**零测试** —— init 硬编码 `applicationSupportDirectory`，
+/// 根本不可测。于是 `Slot` 的 `depth` 迁移失效那个 bug（旧存档
+/// 整份布局被丢弃）一直没被发现。现在加了 `directory:` 注入。
+final class RoomStoreTests: XCTestCase {
+
+    private var dir: URL!
+
+    override func setUp() {
+        super.setUp()
+        dir = Fixture.tempDirectory()
+    }
+
+    override func tearDown() {
+        if let dir { try? FileManager.default.removeItem(at: dir) }
+        super.tearDown()
+    }
+
+    private func write(_ json: String) {
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? json.data(using: .utf8)!
+            .write(to: dir.appendingPathComponent("room.json"))
+    }
+
+    /// **旧存档（没有 depth 字段）必须能解码。**
+    ///
+    /// 这是审计发现的真 bug：`depth` 有属性默认值，但 Swift 的合成
+    /// `init(from:)` **对有默认值的属性仍然要求 key 存在**，缺了抛
+    /// `keyNotFound` → `RoomStore` 用 `try?` 静默退回 `.default`
+    /// → 玩家摆好的布局全部重置且无提示。
+    func testDecodesLegacySlotWithoutDepth() {
+        write("""
+        {"slots":[{"id":"bowl","xRatio":0.7,"yOffset":12,"scaleMul":1,"z":8}]}
+        """)
+        let store = RoomStore(directory: dir)
+
+        XCTAssertEqual(store.layout.slots.count, 1,
+                       "旧格式解码失败 —— 布局被整份丢弃了")
+        let slot = store.layout.slots[0]
+        XCTAssertEqual(slot.id, "bowl")
+        XCTAssertEqual(slot.xRatio, 0.7, accuracy: 0.001, "x 位置该保住")
+        XCTAssertEqual(slot.depth, 0.5, accuracy: 0.001, "缺 depth 该给中段")
+    }
+
+    /// 只有 id 的极简存档也不该整份失败
+    func testDecodesMinimalSlot() {
+        write(#"{"slots":[{"id":"plant"}]}"#)
+        let store = RoomStore(directory: dir)
+        XCTAssertEqual(store.layout.slots.count, 1)
+        XCTAssertEqual(store.layout.slots[0].id, "plant")
+    }
+
+    /// 新格式往返
+    func testRoundTripsNewFormat() {
+        let a = RoomStore(directory: dir)
+        a.place(.bowl)
+        a.move(id: "bowl", toXRatio: 0.33, depth: 0.7)
+
+        let b = RoomStore(directory: dir)
+        XCTAssertEqual(b.layout.slots.count, 1)
+        XCTAssertEqual(b.layout.slots[0].xRatio, 0.33, accuracy: 0.001)
+        XCTAssertEqual(b.layout.slots[0].depth, 0.7, accuracy: 0.001)
+    }
+
+    /// 二维移动要夹在合法范围内
+    func testMoveClampsToFloor() {
+        let store = RoomStore(directory: dir)
+        store.place(.plant)
+
+        store.move(id: "plant", toXRatio: -5, depth: -5)
+        XCTAssertGreaterThan(store.layout.slots[0].xRatio, 0)
+        XCTAssertGreaterThan(store.layout.slots[0].depth, 0)
+
+        store.move(id: "plant", toXRatio: 99, depth: 99)
+        XCTAssertLessThan(store.layout.slots[0].xRatio, 1)
+        XCTAssertLessThan(store.layout.slots[0].depth, 1,
+                          "depth 不能到 1，那会插进墙里")
+    }
+
+    /// 同一件家具不该重复摆
+    func testPlaceIsIdempotent() {
+        let store = RoomStore(directory: dir)
+        store.place(.bowl)
+        store.place(.bowl)
+        XCTAssertEqual(store.layout.slots.count, 1)
+    }
+
+    /// sync 补上「买过但布局里没有」的，并清掉「不再拥有」的
+    func testSyncAddsOwnedAndRemovesStale() {
+        let store = RoomStore(directory: dir)
+        store.place(.bowl)
+        store.place(.plant)
+
+        // 只剩碗了（比如存档被改过）
+        store.sync(owned: ["bowl"])
+        XCTAssertEqual(store.layout.slots.map(\.id), ["bowl"])
+
+        // 又买了床
+        store.sync(owned: ["bowl", "bed"])
+        XCTAssertEqual(Set(store.layout.slots.map(\.id)), ["bowl", "bed"])
+    }
+
+    /// 新买的家具默认位置要错开，否则叠在一起看不清买了什么
+    func testPlacedFurnitureDoesNotOverlap() {
+        let store = RoomStore(directory: dir)
+        for item in FurnitureItem.all { store.place(item) }
+
+        let xs = store.layout.slots.map(\.xRatio)
+        for i in xs.indices {
+            for j in xs.indices where j > i {
+                XCTAssertGreaterThan(abs(xs[i] - xs[j]), 0.1,
+                                     "第 \(i)/\(j) 件家具默认位置太近")
+            }
+        }
+    }
+}
+
+/// 选中哪只宠物必须落盘。
+@MainActor
+final class SelectedPetPersistenceTests: StoreTestCase {
+
+    /// **重启后要记得选的是哪只。**
+    ///
+    /// 审计发现的真 bug：`selectedPetID` 从不落盘，init 里硬写 `pets[0].id`。
+    /// 多宠玩家把第 2 只设为常用，重启后跳回第 1 只 ——
+    /// 此时按「喂食」喂的是**另一只宠物**，而界面显示的是第 1 只的名字，
+    /// 看起来一切正常，没有任何提示。
+    func testSelectionSurvivesRestart() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "咪咪")
+        var w = s.wallet
+        w.debugSetCoins(20000)
+        s.debugSet(wallet: w)
+        s.purchase(.dog)
+
+        let dogID = s.pets.first { $0.breedID == "dog" }!.id
+        s.select(petID: dogID)
+        XCTAssertEqual(s.selectedPetID, dogID)
+
+        // 重开 app（同一份存档）
+        let again = makeStore()
+        XCTAssertEqual(again.selectedPetID, dogID,
+                       "重启后跳回第一只 —— 喂食会作用到错误的宠物")
+        XCTAssertEqual(again.pet.breedID, "dog")
+    }
+
+    /// 选中的那只被删了要优雅退回，不能崩
+    func testFallsBackWhenSelectedPetGone() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "T")
+        var w = s.wallet
+        w.debugSetCoins(20000)
+        w.selectedPetID = "nonexistent-id"
+        s.debugSet(wallet: w)
+
+        let again = makeStore()
+        XCTAssertEqual(again.selectedPetID, again.pets[0].id,
+                       "存的 id 不存在时该退回第一只")
+    }
+
+    /// 买完自动选中新宠物，且这个选择要落盘
+    func testPurchaseSelectionPersists() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "T")
+        var w = s.wallet
+        w.debugSetCoins(20000)
+        s.debugSet(wallet: w)
+        s.purchase(.dog)
+
+        let again = makeStore()
+        XCTAssertEqual(again.pet.breedID, "dog", "买完该选中新宠物且记住")
+    }
+}
+
+/// 照顾达标要记全部宠物。
+@MainActor
+final class WellCaredAllPetsTests: StoreTestCase {
+
+    /// **每只宠物各自记达标天数。**
+    ///
+    /// 审计发现的真 bug：原来只记选中那只。叠加「selectedPetID 不落盘」
+    /// 之后重启总是跳回第一只，于是只有 pets[0] 的 wellCaredDays 会涨，
+    /// 其余宠物永久停在 0 —— 而它是 streak_* 成就的判定依据，
+    /// 成就又是主要金币来源，玩家照顾得再好也拿不到那份钱。
+    func testAllPetsGetCredited() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "A")
+        var w = s.wallet
+        w.debugSetCoins(20000)
+        s.debugSet(wallet: w)
+        s.purchase(.dog)
+        XCTAssertEqual(s.pets.count, 2)
+
+        // 两只都照顾得很好
+        var list = s.pets
+        for i in list.indices {
+            list[i] = Fixture.pet(satiety: 1, mood: 1, hygiene: 1)
+            list[i].id = s.pets[i].id
+            list[i].breedID = s.pets[i].breedID
+            list[i].wellCaredDays = 0
+            list[i].lastWellCaredDay = nil
+        }
+        s.debugSetPets(list)
+
+        s.markSeen()
+
+        for p in s.pets {
+            XCTAssertEqual(p.wellCaredDays, 1,
+                           "\(p.breedID) 的达标天数没涨 —— 只记了选中那只？")
+        }
+    }
+
+    /// 状态差的那只不该被记
+    func testOnlyWellCaredPetsAreCredited() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "A")
+        var w = s.wallet
+        w.debugSetCoins(20000)
+        s.debugSet(wallet: w)
+        s.purchase(.dog)
+
+        var list = s.pets
+        // 第一只照顾好，第二只放养
+        list[0] = Fixture.pet(satiety: 1, mood: 1, hygiene: 1)
+        list[1] = Fixture.pet(satiety: 0.1, mood: 0.1, hygiene: 0.1)
+        for i in list.indices {
+            list[i].id = s.pets[i].id
+            list[i].breedID = s.pets[i].breedID
+            list[i].wellCaredDays = 0
+            list[i].lastWellCaredDay = nil
+        }
+        s.debugSetPets(list)
+
+        s.markSeen()
+
+        XCTAssertEqual(s.pets[0].wellCaredDays, 1)
+        XCTAssertEqual(s.pets[1].wellCaredDays, 0, "放养的那只不该算达标")
+    }
+}

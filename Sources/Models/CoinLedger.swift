@@ -212,6 +212,22 @@ struct CoinLedger: Codable, Equatable {
         case balance, totalIn, totalOut, recent, totals
     }
 
+    /// 手写编码。
+    ///
+    /// 本可以用合成的（`CodingKeys` 恰好覆盖全部 5 个字段），
+    /// 但那是**隐式依赖**：将来加一个 stored property 而忘了加进
+    /// `CodingKeys`，合成 encode 会遵循显式的 `CodingKeys` 只写 5 个 key，
+    /// 新字段静默不落盘且没有编译错误。
+    /// `PetState` / `PetWallet` 都手写了 encode，这里补上保持一致。
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(balance, forKey: .balance)
+        try c.encode(totalIn, forKey: .totalIn)
+        try c.encode(totalOut, forKey: .totalOut)
+        try c.encode(recent, forKey: .recent)
+        try c.encode(totals, forKey: .totals)
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         balance = try c.decodeIfPresent(Int.self, forKey: .balance) ?? 0

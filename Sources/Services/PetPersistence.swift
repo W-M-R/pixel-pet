@@ -48,9 +48,18 @@ struct FilePersistence: PetPersistence {
         if let list = decode([PetState].self, from: petURL, label: "pets") {
             return list
         }
-        // 旧存档：单个对象。它的 id 会被解码成 "primary"（见 PetState）。
+        // 旧存档：单个对象。它的 id 会被解码成 `PetState.legacyID`。
         if let one = decodeQuietly(PetState.self, from: petURL) {
             return [one]
+        }
+        // **两种格式都读不动，而文件确实存在 —— 这是数据损坏，必须吼。**
+        //
+        // 原来这里直接 `return []`，然后 `PetStore.init` 造一只默认猫：
+        // 多宠玩家的存档一旦损坏，全部宠物和养成记录静默消失，
+        // 界面上看起来只是"回到了新手状态"，没有任何线索。
+        if (try? Data(contentsOf: petURL))?.isEmpty == false {
+            assertionFailure("pet.json 存在但两种格式都解不动，数据可能损坏")
+            NSLog("[PixelPet] pet.json 损坏，无法解码为数组或单对象")
         }
         return []
     }
@@ -94,13 +103,27 @@ struct FilePersistence: PetPersistence {
 
     /// 写盘用 `.atomic` —— 中途被杀不会留下半个文件
     func save(pets: [PetState]) {
-        guard let d = try? JSONEncoder().encode(pets) else { return }
-        try? d.write(to: petURL, options: .atomic)
+        write(pets, to: petURL, label: "pets")
     }
 
     func save(wallet: PetWallet) {
-        guard let d = try? JSONEncoder().encode(wallet) else { return }
-        try? d.write(to: walletURL, options: .atomic)
+        write(wallet, to: walletURL, label: "wallet")
+    }
+
+    /// 写盘。
+    ///
+    /// **失败不能静默吞掉。** 原来是 `try?`：磁盘满或沙盒权限异常时，
+    /// 玩家整个 session 的进度会在重启后消失，而运行期间 UI 一切正常
+    /// （内存状态是对的）—— 这是最难查的一类问题，
+    /// 因为现象和「存档根本没写」完全一样但代码看起来没问题。
+    private func write<T: Encodable>(_ value: T, to url: URL, label: String) {
+        do {
+            let data = try JSONEncoder().encode(value)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            assertionFailure("\(label).json 写入失败：\(error)")
+            NSLog("[PixelPet] %@.json 写入失败：%@", label, "\(error)")
+        }
     }
 }
 

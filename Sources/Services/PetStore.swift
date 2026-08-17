@@ -45,6 +45,8 @@ final class PetStore {
     func select(petID: String) {
         guard pets.contains(where: { $0.id == petID }) else { return }
         selectedPetID = petID
+        wallet.selectedPetID = petID
+        persist()          // 原来这里不写盘 —— 切换在重启后就丢了
     }
 
     private(set) var wallet: PetWallet
@@ -78,16 +80,21 @@ final class PetStore {
         let list = loaded.isEmpty
             ? [PetState(breedID: PetBreed.cat.id, colorIndex: 0, name: "")]
             : loaded
-        let loadedWallet = storage.loadWallet() ?? PetWallet()
+        let existingWallet = storage.loadWallet()
+        let loadedWallet = existingWallet ?? PetWallet()
 
         self.pets = list
-        self.selectedPetID = list[0].id
+        // 选中项从钱包读 —— 不存的话重启后跳回第一只，
+        // 玩家按「喂食」会喂到另一只宠物且没有提示。
+        // 存的 id 已经不存在时（那只被删了）退回第一只。
+        let saved = loadedWallet.selectedPetID
+        self.selectedPetID = list.contains { $0.id == saved } ? saved! : list[0].id
         self.wallet = loadedWallet
 
         // 首次启动必须立刻写盘 —— 否则 bornAt 每次启动都被重置，
         // 宠物永远显示「相伴第 0 天」。
         if loaded.isEmpty { storage.save(pets: list) }
-        if storage.loadWallet() == nil { storage.save(wallet: loadedWallet) }
+        if existingWallet == nil { storage.save(wallet: loadedWallet) }
 
         if runsHeartbeat { startHeartbeat() }
     }
@@ -136,7 +143,9 @@ final class PetStore {
             pet.lastStreakDay = now
         }
         recordCareQuality(at: now)
-        pet.lastSeenAt = now
+        // 全部宠物都"见过面了" —— 只更新选中那只的话，
+        // 切换过去时会误判成"久别重逢"
+        for i in pets.indices { pets[i].lastSeenAt = now }
         persist()
     }
 
@@ -151,16 +160,25 @@ final class PetStore {
     /// `streak_*` 类成就改看这个数。
     private func recordCareQuality(at now: Date) {
         let cal = Calendar.current
-        // 同一天已经记过就跳过
-        if let last = pet.lastWellCaredDay,
-           cal.isDate(last, inSameDayAs: now) { return }
+        // **遍历全部宠物**，不只选中那只。
+        //
+        // 原来只记 `pet`（选中那只）。叠加「selectedPetID 不落盘」之后，
+        // 重启总是跳回第一只 —— 于是只有 pets[0] 的 wellCaredDays 会涨，
+        // 其余宠物永久停在 0。而它是 `streak_*` 成就的判定依据，
+        // 成就又是主要金币来源，玩家照顾得再好也拿不到那份钱。
+        for i in pets.indices {
+            // 同一天已经记过就跳过
+            if let last = pets[i].lastWellCaredDay,
+               cal.isDate(last, inSameDayAs: now) { continue }
 
-        let avg = (pet.satiety(at: now) + pet.mood(at: now)
-                   + pet.hygiene(at: now)) / 3
-        guard avg >= StateThreshold.wellCared else { return }
+            let p = pets[i]
+            let avg = (p.satiety(at: now) + p.mood(at: now)
+                       + p.hygiene(at: now)) / 3
+            guard avg >= StateThreshold.wellCared else { continue }
 
-        pet.wellCaredDays = (pet.wellCaredDays ?? 0) + 1
-        pet.lastWellCaredDay = now
+            pets[i].wellCaredDays = (p.wellCaredDays ?? 0) + 1
+            pets[i].lastWellCaredDay = now
+        }
     }
 
     // MARK: - 奖励结算
@@ -365,7 +383,7 @@ final class PetStore {
         guard let target = pets.first(where: { $0.breedID == breedID }) else {
             return false
         }
-        selectedPetID = target.id
+        select(petID: target.id)      // 走 select 才会落盘
         return true
     }
 
@@ -403,6 +421,7 @@ final class PetStore {
         first.triedColors = colors
         pets[0] = first
         selectedPetID = first.id
+        wallet.selectedPetID = first.id
 
         persist()
         return true
@@ -426,6 +445,7 @@ final class PetStore {
         newPet.triedColors = [colorIndex]
         pets.append(newPet)
         selectedPetID = newPet.id      // 买完直接选中它，方便马上起名
+        wallet.selectedPetID = newPet.id
 
         persist()
         return true
@@ -465,6 +485,15 @@ final class PetStore {
     /// `pet`/`wallet` 是 `private(set)` —— 生产代码只能通过语义方法改状态，
     /// 这个约束是对的，不放开。测试要造「饿透的宠物」「没钱的钱包」
     /// 这类场景，走这个显式的后门比放开 setter 安全。
+    /// 测试专用：整批置入宠物列表。多宠场景要用。
+    func debugSetPets(_ list: [PetState]) {
+        guard !list.isEmpty else { return }
+        pets = list
+        if !list.contains(where: { $0.id == selectedPetID }) {
+            selectedPetID = list[0].id
+        }
+    }
+
     func debugSet(pet newPet: PetState? = nil, wallet newWallet: PetWallet? = nil) {
         if let newPet { pet = newPet }
         if let newWallet { wallet = newWallet }
@@ -556,8 +585,13 @@ final class PetStore {
     }
 
     private func persist() {
-        storage.save(wallet: wallet)
+        // 先 pets 后 wallet。
+        //
+        // 两次写盘之间被杀是有窗口的。`feed()` 是先扣钱再改 lastFedAt，
+        // 所以这个顺序下最坏情况是「宠物吃到了但钱没扣」（白吃一顿），
+        // 反过来则是「钱扣了但没吃到」—— 后者对玩家不利。
         storage.save(pets: pets)
+        storage.save(wallet: wallet)
         tick = Date()
         // 状态变了就重排提醒 —— 因为「何时会饿」是从时间戳算的
         let name = pet.name.isEmpty ? L(pet.breed.nameKey) : pet.name

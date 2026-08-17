@@ -32,6 +32,17 @@ enum PetSpecies: String, Codable, CaseIterable, Identifiable {
 /// 正解是存「上次喂食是什么时候」，需要用到饥饿度时按 `now - lastFedAt` 算。
 /// 这样无论 app 关多久、设备重启几次，读出来的值都是对的。
 struct PetState: Codable, Equatable, Identifiable {
+
+    /// 旧存档（单宠时期）缺 `id` 时补的固定值。
+    ///
+    /// **必须是固定值而非随机 UUID** —— 随机的话每次解码都变，
+    /// 钱包里按宠物记的额度（`todayEarnedByPet`）就对不上，
+    /// 玩家反复重启能刷满额度。
+    ///
+    /// `PetWallet` 迁移旧的 `todayEarned` 时也用这个常量，
+    /// 两处必须一致。曾经是两个独立的字符串字面量，
+    /// 靠注释互相提醒 —— 改一处忘一处就会漏。
+    static let legacyID = "primary"
     /// 这只宠物的唯一标识。
     ///
     /// **不能用 `breedID` 当身份** —— 现在可以同时养多只，
@@ -183,7 +194,7 @@ struct PetState: Codable, Equatable, Identifiable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         // 旧存档只有一只宠物、没有 id。用固定值而非随机 UUID ——
         // 随机的话每次解码都变，钱包里按宠物记的额度就对不上了。
-        id = try c.decodeIfPresent(String.self, forKey: .id) ?? "primary"
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? Self.legacyID
         if let bid = try c.decodeIfPresent(String.self, forKey: .breedID) {
             breedID = bid
         } else if let sp = try c.decodeIfPresent(String.self, forKey: .species) {

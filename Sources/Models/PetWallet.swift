@@ -57,6 +57,17 @@ struct PetWallet: Codable, Equatable {
     /// 家具是**一次性解锁**（买了就摆在房间里，再买没有意义）。
     var ownedFurniture: Set<String>
 
+    /// 当前选中哪只宠物。
+    ///
+    /// **必须落盘。** 喂食/玩耍/洗澡三个按钮、状态栏、台词全部作用于
+    /// 选中那只 —— 不存的话重启后跳回第一只，玩家按「喂食」会喂到
+    /// **另一只宠物**，而且没有任何提示（界面显示的就是第一只的名字，
+    /// 看起来一切正常）。
+    ///
+    /// 存在钱包而非宠物存档：宠物存档是数组，"选了哪个"是玩家的偏好，
+    /// 不属于任何一只宠物自己的属性。
+    var selectedPetID: String?
+
     /// 是否已完成开局（选宠物 + 起名）。
     ///
     /// 存在钱包而非 PetState —— 重置宠物不该让人重走开局流程，
@@ -93,6 +104,7 @@ struct PetWallet: Codable, Equatable {
         claimedRewards = []
         ownedBreeds = []
         ownedFurniture = []
+        selectedPetID = nil
         hasCompletedOnboarding = false
     }
 
@@ -235,6 +247,7 @@ struct PetWallet: Codable, Equatable {
         case coins, lastCollectedAt, boostUntil, totalEarned
         case todayEarned, todayEarnedByPet, lastEarnDate, claimedRewards
         case ownedBreeds, ownedFurniture, hasCompletedOnboarding
+        case selectedPetID
         case ledger
     }
 
@@ -258,13 +271,14 @@ struct PetWallet: Codable, Equatable {
             // 旧存档只有一个总数、只有一只宠物。归到 "primary" 名下 ——
             // 和 PetState 解码时给旧存档补的 id 一致，否则今日额度会凭空重置。
             let legacy = try c.decodeIfPresent(Int.self, forKey: .todayEarned) ?? 0
-            todayEarnedByPet = legacy > 0 ? ["primary": legacy] : [:]
+            todayEarnedByPet = legacy > 0 ? [PetState.legacyID: legacy] : [:]
         }
         lastEarnDate = try c.decodeIfPresent(Date.self, forKey: .lastEarnDate) ?? .distantPast
         claimedRewards = try c.decodeIfPresent(Set<String>.self, forKey: .claimedRewards) ?? []
         ownedBreeds = try c.decodeIfPresent(Set<String>.self, forKey: .ownedBreeds) ?? []
         ownedFurniture = try c.decodeIfPresent(Set<String>.self,
                                                forKey: .ownedFurniture) ?? []
+        selectedPetID = try c.decodeIfPresent(String.self, forKey: .selectedPetID)
         // 旧存档没有这个字段。如果已经有宠物在养（钱包被用过），
         // 视为已完成开局，不该把老用户拉回选宠界面。
         if let done = try c.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) {
@@ -292,6 +306,7 @@ struct PetWallet: Codable, Equatable {
         try c.encode(claimedRewards, forKey: .claimedRewards)
         try c.encode(ownedBreeds, forKey: .ownedBreeds)
         try c.encode(ownedFurniture, forKey: .ownedFurniture)
+        try c.encodeIfPresent(selectedPetID, forKey: .selectedPetID)
         try c.encode(hasCompletedOnboarding, forKey: .hasCompletedOnboarding)
     }
 }
