@@ -619,8 +619,13 @@ final class PetScene: SKScene {
             let depthThere = floor.depth(atY: bowlMouthY)
             let unit = a.scale(atDepth: depthThere) * CGFloat(PetSpriteSheet.prescale)
 
-            // 多只时横向铺开，间距略小于身体宽度 —— 挤在一起才像抢食
-            let bodyW = 22 * unit
+            // 多只时在**碗口范围内**横向挤开。
+            //
+            // ⚠️ 曾经用「身体宽度」当间距（22 源像素 ≈ 67pt），
+            // 但碗只有 96pt 宽 —— 第二只就站到 x=287，
+            // 而碗右边缘只到 268，整个在碗外面。
+            // 间距必须按**碗的宽度**分配，不是按宠物身体。
+            let spread = bowlRect.width * 0.32
             let step: CGFloat
             switch i {
             case 0: step = 0
@@ -639,11 +644,11 @@ final class PetScene: SKScene {
             //
             // 正解：走路用地板坐标，"埋进碗"是**到达后的视觉偏移**
             // （见 `startChewing`）。两件事分开，不跟地板系统对抗。
-            let target = floor.clamp(CGPoint(x: bowlCX + step * bodyW,
+            let target = floor.clamp(CGPoint(x: bowlCX + step * spread,
                                              y: bowlMouthY))
             a.behavior = .walkingToBowl(target: target)
             // 记下头该埋到哪 —— 到达后由 startChewing 做视觉偏移
-            a.eatAnchor = CGPoint(x: bowlCX + step * bodyW, y: bowlMouthY)
+            a.eatAnchor = CGPoint(x: bowlCX + step * spread, y: bowlMouthY)
             a.applyWalkAnimation()
         }
     }

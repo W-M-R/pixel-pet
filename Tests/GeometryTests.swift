@@ -228,6 +228,7 @@ final class SheetLayoutFlexibilityTests: XCTestCase {
                        eatRow: nil,              // 没有进食帧
                        footPadding: 6,
                        mouthReach: 18,           // 大格子，嘴也伸得更远
+                       eatHeadFromBottom: 20,
                        sleepColumns: 2,
                        sleepRows: 2)
     }
@@ -515,6 +516,62 @@ final class EatFrameOrientationTests: XCTestCase {
         }
         XCTAssertEqual(Set(rows).count, 1, "进食行不该随朝向变化")
         XCTAssertEqual(rows.first, layout.eatRow)
+    }
+
+    /// **进食帧的头在格子中部，不在下方。**
+    ///
+    /// 这条锁住一个我猜错过的数：`eatHeadFromBottom` 一开始按
+    /// "头在帧下方"填了 8，实际扫像素找五官发现眼睛在 y=16、
+    /// 头心约 y=17 → 距格底 14。差的 6 源像素（约 21pt）
+    /// 就是"宠物离碗远"的直接原因之一。
+    ///
+    /// 教训：判断素材姿态要**扫像素找五官**，
+    /// 看轮廓宽度分布会得出相反结论 ——
+    /// 猫正面朝镜头时尾巴竖在身后，轮廓看着像"上窄下宽的背影"。
+    func testEatHeadPositionIsMeasured() throws {
+        for breed in PetBreed.all {
+            let url = Bundle.main.url(forResource: breed.sheetName,
+                                      withExtension: "png")
+            let path = try XCTUnwrap(url)
+            let img = try XCTUnwrap(UIImage(contentsOfFile: path.path))
+            let cg = try XCTUnwrap(img.cgImage)
+            let layout = breed.layout
+            let cell = Int(layout.cell)
+            let eatRow = try XCTUnwrap(layout.eatRow)
+
+            let rect = CGRect(x: 0, y: eatRow * cell, width: cell, height: cell)
+            let frame = try XCTUnwrap(cg.cropping(to: rect))
+            let w = frame.width, h = frame.height
+            var data = [UInt8](repeating: 0, count: w * h * 4)
+            let ctx = CGContext(data: &data, width: w, height: h,
+                                bitsPerComponent: 8, bytesPerRow: w * 4,
+                                space: CGColorSpaceCreateDeviceRGB(),
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            ctx?.draw(frame, in: CGRect(x: 0, y: 0, width: w, height: h))
+
+            // 找橙色眼睛：R 高、G 中、B 低
+            var eyeRows: [Int] = []
+            for y in 0..<h {
+                for x in 0..<w {
+                    let i = (y * w + x) * 4
+                    let r = Int(data[i]), g = Int(data[i+1])
+                    let b = Int(data[i+2]), a = Int(data[i+3])
+                    if a > 0 && r > 170 && g > 90 && g < 160 && b < 110 {
+                        eyeRows.append(y)
+                    }
+                }
+            }
+            XCTAssertFalse(eyeRows.isEmpty,
+                           "\(breed.id) 的进食帧里找不到眼睛 —— 素材换了？")
+
+            // 注意 CGContext 的 y 向下，和源图坐标一致
+            let eyeY = eyeRows.reduce(0, +) / eyeRows.count
+            let measured = CGFloat(cell - 1 - eyeY)
+            XCTAssertEqual(layout.eatHeadFromBottom, measured, accuracy: 4,
+                           "\(breed.id) 的 eatHeadFromBottom "
+                           + "(\(layout.eatHeadFromBottom)) 和实测眼睛位置 "
+                           + "(\(measured)) 差太多")
+        }
     }
 
     /// 进食帧是左右对称的（头在格中心），所以只适合正面朝向镜头。
