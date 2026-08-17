@@ -194,7 +194,7 @@ struct PetBreed: Identifiable, Hashable, Codable, Sendable {
     /// 猫：均衡型，开局可选
     static let cat = PetBreed(
         id: "cat", nameKey: "breed.cat",
-        layout: .lpc(footPadding: 5),      // 实测内容底边 y=26 → 31-26
+        layout: .lpc(footPadding: 5, mouthReach: 11),  // 实测：底边 y=26、鼻尖 x=27
         price: 4000, traitKey: "trait.balanced",
         moodCycleHours: 18, hygieneCycleHours: 72, goldMultiplier: 1.00)
 
@@ -212,8 +212,8 @@ struct PetBreed: Identifiable, Hashable, Codable, Sendable {
     /// 由 `ConfigTests.testNoBreedDominatesAnother` 守着。
     static let dog = PetBreed(
         id: "dog", nameKey: "breed.dog",
-        layout: .lpc(footPadding: 3),      // 实测 y=28 → 31-28。
-                                           // 原来硬编码 5，狗影子偏 8pt
+        layout: .lpc(footPadding: 3, mouthReach: 12),  // 实测：底边 y=28、鼻尖 x=28
+                                           // footPadding 原来硬编码 5，狗影子偏 8pt
 
         price: 4000, traitKey: "trait.clingy",
         moodCycleHours: 14, hygieneCycleHours: 72, goldMultiplier: 1.10)

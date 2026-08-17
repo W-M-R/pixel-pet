@@ -1969,22 +1969,6 @@
         }
       }
     },
-    "furn.long_bowl": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Long bowl"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "小长碗"
-          }
-        }
-      }
-    },
     "furn.owned": {
       "localizations": {
         "en": {

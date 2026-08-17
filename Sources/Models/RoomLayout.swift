@@ -9,9 +9,20 @@ import CoreGraphics
 struct RoomLayout: Codable, Equatable {
 
     struct Slot: Codable, Equatable, Identifiable {
-        var id: String          // Furniture 的 rawValue
+        var id: String          // FurnitureItem.id
         var xRatio: Double
-        var yOffset: Double
+
+        /// 纵向位置，用**地板 depth**（0 = 最近/最下，1 = 最远/贴墙）。
+        ///
+        /// 不用绝对点数：地板范围随机型和安全区变化，
+        /// 存点数会让家具在不同设备上跑到地板外面。
+        /// depth 是地板自己的坐标系，换设备自动适配。
+        var depth: Double = 0.5
+
+        /// 旧字段。曾经家具只能横向拖，纵向靠这个手调偏移。
+        /// 保留是为了让旧存档能解码，新代码不再读它。
+        var yOffset: Double = 0
+
         var scaleMul: Double
         var z: Double
     }
@@ -50,10 +61,17 @@ final class RoomStore {
         }
     }
 
-    func move(id: String, toXRatio ratio: Double) {
+    /// 移动家具。
+    ///
+    /// **二维自由移动** —— 只要落在地板上。
+    /// 曾经只能横向拖（`toXRatio`），纵向得改代码里的 yOffset。
+    func move(id: String, toXRatio ratio: Double, depth: Double) {
         guard let idx = layout.slots.firstIndex(where: { $0.id == id }) else { return }
         // 留边距，别让家具跑出屏幕
         layout.slots[idx].xRatio = min(0.94, max(0.06, ratio))
+        // depth 夹在地板范围内。留一点余量：
+        // 0 会贴到屏幕最下缘（压住按钮），1 会插进墙里。
+        layout.slots[idx].depth = min(0.92, max(0.08, depth))
         persist()
     }
 
@@ -65,9 +83,14 @@ final class RoomStore {
         guard !layout.slots.contains(where: { $0.id == item.id }) else { return }
         // 0.22 / 0.42 / 0.62 / 0.82 依次排开
         let ratio = min(0.82, 0.22 + Double(layout.slots.count) * 0.20)
+        // 纵向也错开一点，免得新买的家具正好压在旧的上面
+        let depth = 0.45 + Double(layout.slots.count % 3) * 0.12
         layout.slots.append(RoomLayout.Slot(
-            id: item.id, xRatio: ratio, yOffset: 0,
-            scaleMul: 1, z: item.isBowl ? 8 : 7))
+            id: item.id, xRatio: ratio, depth: depth,
+            // 碗的 z 比宠物(10)高一点 —— 宠物凑过来吃时碗沿仍可见。
+            // 32px 宽的碗会被两侧约 24px 的身体夹住，压在下面就看不到了。
+            // 装饰品放宠物之下，宠物走到前面能挡住它，那是对的。
+            scaleMul: 1, z: item.isBowl ? 10.5 : 7))
         persist()
     }
 

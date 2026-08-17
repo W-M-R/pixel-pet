@@ -63,7 +63,7 @@ final class PetScene: SKScene {
     private var dragArmTimer: Timer?
 
     /// 家具被移动后回调，交给 RoomStore 持久化
-    var onFurnitureMoved: ((String, Double) -> Void)?
+    var onFurnitureMoved: ((String, Double, Double) -> Void)?
 
     // MARK: - 房间几何
     //
@@ -271,12 +271,23 @@ final class PetScene: SKScene {
 
         let node = SKSpriteNode(texture: tex)
         node.texture?.filteringMode = .nearest
-        // 底部锚点 —— 家具贴地，这样位置的语义就是「底边站在哪」
+        // 底部锚点 —— 家具贴地，位置的语义是「底边站在哪」
         node.anchorPoint = CGPoint(x: 0.5, y: 0)
         node.setScale(FurnitureItem.displayScale * slot.scaleMul)
-        // 摆在地板靠前的位置，宠物能走到它两侧
+
+        // ⚠️ **家具底边要对齐宠物的脚底，不是宠物的节点中心。**
+        //
+        // `FloorPlane` 的 y 全部按宠物**节点中心**算
+        // （spawn 时 `node.position = floor.y(atDepth:)`）。
+        // 而宠物的脚底比中心低 `(cell/2 - footPadding)` 源像素 ——
+        // 猫是 11 源像素、约 37pt。
+        //
+        // 家具原来直接把 `floor.y(atDepth:)` 当底边用，
+        // 于是同一个 depth 下家具底边和宠物**中心**齐平，
+        // 家具就比宠物脚底高了一截 —— 碗看起来像悬浮在空中。
+        let centerY = floor.y(atDepth: slot.depth)
         node.position = CGPoint(x: size.width * slot.xRatio,
-                                y: floor.y(atDepth: 0.55) + slot.yOffset)
+                                y: centerY - petFootDrop(atDepth: slot.depth))
         node.zPosition = slot.z
         node.name = slot.id
         addChild(node)
@@ -288,13 +299,33 @@ final class PetScene: SKScene {
         }
     }
 
+    /// 同一个 depth 下，宠物脚底比节点中心低多少 pt。
+    ///
+    /// 家具要减掉这个值才能和宠物「站在同一条线上」。
+    /// 用第一只宠物的布局算 —— 各品种的 footPadding 差 2 源像素（8pt），
+    /// 家具对齐取一个代表值足够，不值得为此让家具按品种偏移。
+    private func petFootDrop(atDepth depth: CGFloat) -> CGFloat {
+        guard let a = actors.first ?? nil else {
+            // 还没有宠物时用猫的参数兜底
+            let unit = pixelScale * PetStage.adult.bodyScale
+            return (32 / 2 - 5) * unit
+        }
+        let unit = a.scale(atDepth: depth) * CGFloat(PetSpriteSheet.prescale)
+        return (a.layoutCell / 2 - a.layoutFootPadding) * unit
+    }
+
     /// 当前的饭碗节点与规格。没买碗时是 nil。
     private var bowlNode: SKNode?
     private var bowlItem: FurnitureItem?
 
-    /// 碗底所在的 y —— 宠物要站在同一条线上才像在一起吃
-    private var bowlFootY: CGFloat {
-        bowlNode?.position.y ?? floor.y(atDepth: 0.55)
+    /// 碗在地板坐标系里的 y（= 宠物节点中心的那条线）。
+    ///
+    /// 注意碗节点的 `position.y` 是**底边**且已经减过 `petFootDrop`，
+    /// 所以要加回来才是地板坐标。
+    private var bowlCenterY: CGFloat {
+        guard let bowl = bowlNode else { return floor.y(atDepth: 0.55) }
+        let d = floor.depth(atY: bowl.position.y + petFootDrop(atDepth: 0.5))
+        return floor.y(atDepth: d)
     }
 
     /// 墙 + 地板。
@@ -322,7 +353,39 @@ final class PetScene: SKScene {
         for a in actors {
             step(a, at: currentTime, dt: dt)
         }
+        sortByDepth()
         bubbles?.sync()
+    }
+
+    /// 按 y 排 z —— **2.5D 的遮挡关系**。
+    ///
+    /// 谁的脚底更靠下（y 更小 = 离镜头更近），谁画在前面。
+    ///
+    /// 这是你要的"视觉反馈"：宠物和家具**不做碰撞**（可以穿过去，
+    /// 也可以互相交叉走），但走到家具前面就挡住它、走到后面就被挡住。
+    /// 靠遮挡表达前后关系，比让宠物绕路自然得多 ——
+    /// 绕路需要寻路，而且房间这么小，绕起来会显得很蠢。
+    ///
+    /// 顺带解决了「碗像悬浮在空中」：碗和宠物进同一套深度排序后，
+    /// 站在碗后面的宠物会被碗遮住下半身，那个遮挡就是"碗在地上"的证据。
+    private func sortByDepth() {
+        // 家具和宠物一起排。用脚底/底边（而非节点中心）——
+        // 那才是"站在地板哪个位置"。
+        var items: [(node: SKNode, footY: CGFloat)] = actors.map {
+            ($0.node, $0.feetY)
+        }
+        for n in furnitureNodes {
+            // 家具是底部锚点，position.y 就是底边
+            items.append((n, n.position.y))
+        }
+        // footY 越小（越近）→ zPosition 越大（越靠前）
+        for (i, e) in items.sorted(by: { $0.footY > $1.footY }).enumerated() {
+            e.node.zPosition = 10 + CGFloat(i)
+        }
+        // 影子要跟着自己的宠物，且在它下面一层
+        for a in actors {
+            a.shadow.zPosition = a.node.zPosition - 0.5
+        }
     }
 
     /// 推进一只宠物一帧。
@@ -427,7 +490,11 @@ final class PetScene: SKScene {
                         y: a.exactPosition.y + dy / dist * step))
         }
         a.node.position = a.exactPosition
-        updateFacing(a, toward: target)
+        // 走向饭碗时**不改朝向** —— 朝向在派位时就定好了（决定嘴在哪一侧），
+        // 每帧按"朝目标点"重算会让宠物走到位后背对着碗。
+        if case .walkingToBowl = a.behavior {} else {
+            updateFacing(a, toward: target)
+        }
         applyDepthScale(a)
         return false
     }
@@ -505,19 +572,69 @@ final class PetScene: SKScene {
         }
 
         for (i, a) in queue.enumerated() where i < item.feedSlots {
+            // **睡着的也叫醒。** `step()` 会跳过 .sleeping 的宠物，
+            // 不先唤醒的话它永远走不到碗边 —— 实测就是这样：
+            // 狗到位吃上了，猫因为在睡觉原地不动，看起来像"位置不对"。
+            if isSleeping(a) {
+                a.nextDecisionAt = 0
+                a.applyIdlePose()
+            }
+
             // 左右交替：0→左, 1→右, 2→左更外, 3→右更外
             let side: CGFloat = (i % 2 == 0) ? -1 : 1
             let rank = CGFloat(i / 2)
-            let u = FurnitureItem.displayScale
-            // 碗半宽 + 宠物半身 + 间隙，外圈再往外让一点
-            let dx = side * u * (CGFloat(item.cellWidth) * 8 + 9 + rank * 7)
-            // 外圈往前站一点，避免和内圈完全同一条线上
-            let dy = rank * u * 3
 
-            let target = floor.clamp(CGPoint(x: bowl.position.x + dx,
-                                             y: bowlFootY + dy))
+            // **嘴对准碗边，不是身体中心对准碗。**
+            //
+            // 原来的公式是 `side * u * (cellWidth*8 + 9 + rank*7)`，
+            // 有两个问题：
+            // 1. 算的是**节点中心**到碗中心的距离，而宠物的嘴比中心
+            //    前伸 11-12 源像素（实测鼻尖 x=27/28，格中心 16）——
+            //    所以它站得离碗太远，看起来像在旁边发呆
+            // 2. 偏移用家具缩放 u=3，而宠物大小由自己的 depth 决定，
+            //    两个比例尺混在一个公式里
+            //
+            // 现在都用**宠物自己的像素单位**算：
+            //   目标嘴位置 = 碗边缘稍微往里
+            //   节点中心 = 目标嘴位置 - 嘴前伸量
+            let bowlHalfW = FurnitureItem.cell * CGFloat(item.cellWidth)
+                / 2 * FurnitureItem.displayScale
+            // 先按当前缩放估一个，下面算完 depth 再用目标处的缩放修正 x
+            let unit = a.sourcePixelUnit
+            // 嘴落在**碗沿外侧一点**（+3 源像素）。
+            //
+            // 曾经取碗沿内侧（-2），结果两只宠物的身体把 32px 宽的碗
+            // 整个夹住看不见了 —— 宠物身体约 24 源像素宽，
+            // 嘴贴到碗中心线附近时身体就压过来了。
+            // 往外让 3 像素，碗露出来，看着也更像"低头凑过去吃"。
+            let mouthTargetX = bowl.position.x + side * (bowlHalfW + 3 * unit)
+            // 外圈往外让开一个身位，避免和内圈重叠
+            let ringGap = rank * 14 * unit
+            // ⚠️ 朝向和「在碗的哪一侧」是**相反**的：
+            // 站左边的宠物要朝右（才对着碗），所以 dir = -side。
+            // 第一版写成 `- side * reach`，等于用了错误的方向，
+            // 结果两只都往碗中心挤，身体把碗整个盖住了
+            // （实测中心只差 20pt，而身体宽 83pt）。
+            let dir = -side
+            let centerX = mouthTargetX - dir * (a.layoutMouthReach * unit)
+                + side * ringGap
+
+            // 站到碗所在的那条地板线上。
+            //
+            // 家具底边已经按 `petFootDrop` 对齐过宠物脚底（见 addFurniture），
+            // 所以这里只要取碗的 depth，宠物的中心 y 自然就对 ——
+            // 两者用的是同一套坐标语义。
+            //
+            // 曾经在这里用「当前缩放反推脚底」，但走过去的路上 depth 会变、
+            // 缩放跟着变，用当前值算的目标到了那里就不成立了。
+            let bowlDepth = floor.depth(atY: bowlCenterY)
+            // 外圈稍微近一点，前后错开才不会挡住内圈
+            let targetDepth = min(0.92, max(0.05, bowlDepth - Double(rank) * 0.05))
+            let target = floor.clamp(CGPoint(x: centerX,
+                                             y: floor.y(atDepth: targetDepth)))
             a.behavior = .walkingToBowl(target: target)
-            updateFacing(a, toward: bowl.position)
+            // 先摆好朝向 —— 朝向决定嘴在哪一侧，走的时候就该是对的
+            a.facing = side < 0 ? .right : .left
             a.applyWalkAnimation()
         }
     }
@@ -740,8 +857,12 @@ final class PetScene: SKScene {
         guard let location = touches.first?.location(in: self) else { return }
 
         if let dragging = draggingNode {
-            dragging.position.x = min(size.width * 0.94,
-                                      max(size.width * 0.06, location.x))
+            // **二维自由拖动，只要落在地板上。**
+            // 曾经只能改 x，纵向得去改代码。
+            let clamped = floor.clamp(location)
+            dragging.position = CGPoint(x: min(size.width * 0.94,
+                                               max(size.width * 0.06, clamped.x)),
+                                        y: clamped.y)
             return
         }
         // 手指移开了原位置就取消待拖动，避免误触发
@@ -798,7 +919,9 @@ final class PetScene: SKScene {
             .fadeAlpha(to: 1, duration: 0.12)
         ]))
         if let id = node.name, size.width > 0 {
-            onFurnitureMoved?(id, Double(node.position.x / size.width))
+            onFurnitureMoved?(id,
+                              Double(node.position.x / size.width),
+                              Double(floor.depth(atY: node.position.y)))
         }
     }
 

@@ -155,6 +155,20 @@ final class PetActor {
         node.position.y - (sheetLayout.cell / 2 - sheetLayout.footPadding) * sourcePixelUnit
     }
 
+    /// 嘴（鼻尖）当前在屏幕上的 x。
+    ///
+    /// 吃饭站位要用它对准碗 —— 拿节点中心对准碗的话，
+    /// 宠物会站得离碗太远，看起来像在旁边发呆而不是在吃。
+    /// 嘴前伸量（源像素）。场景算站位要用。
+    var layoutMouthReach: CGFloat { sheetLayout.mouthReach }
+    var layoutCell: CGFloat { sheetLayout.cell }
+    var layoutFootPadding: CGFloat { sheetLayout.footPadding }
+
+    var mouthX: CGFloat {
+        let dir: CGFloat = (facing == .left) ? -1 : 1
+        return node.position.x + dir * sheetLayout.mouthReach * sourcePixelUnit
+    }
+
     func scale(atDepth depth: CGFloat) -> CGFloat {
         let perspective = 1 - depth * 0.25
         return pixelScale * stage.bodyScale * perspective

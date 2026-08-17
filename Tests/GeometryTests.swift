@@ -227,6 +227,7 @@ final class SheetLayoutFlexibilityTests: XCTestCase {
                        facingRows: [0, 2, 3, 1], // 行序也不同
                        eatRow: nil,              // 没有进食帧
                        footPadding: 6,
+                       mouthReach: 18,           // 大格子，嘴也伸得更远
                        sleepColumns: 2,
                        sleepRows: 2)
     }
@@ -367,23 +368,21 @@ final class BowlSlotLayoutTests: XCTestCase {
         }
     }
 
-    /// 圆碗 2 位：一左一右，且左右对称
-    func testRoundBowlPutsPetsOnBothSides() {
-        let offs = slotOffsets(count: FurnitureItem.bowl.feedSlots,
+    /// 内圈一左一右，左右对称
+    func testBowlPutsPetsOnBothSides() {
+        let offs = slotOffsets(count: 2,
                                cellWidth: FurnitureItem.bowl.cellWidth)
-        XCTAssertEqual(offs.count, 2)
         XCTAssertLessThan(offs[0].dx, 0, "第一只该在左边")
         XCTAssertGreaterThan(offs[1].dx, 0, "第二只该在右边")
         XCTAssertEqual(abs(offs[0].dx), abs(offs[1].dx), accuracy: 0.01,
                        "两侧该对称")
-        // 都在同一条线上（圆碗只有内圈）
         XCTAssertEqual(offs[0].dy, 0, accuracy: 0.01)
         XCTAssertEqual(offs[1].dy, 0, accuracy: 0.01)
     }
 
-    /// 长碗 4 位：左右各两，外圈更远且往前站一点
-    func testLongBowlStaggersOuterRing() {
-        let item = FurnitureItem.longBowl
+    /// 4 位：左右各两，外圈更远且往前站一点
+    func testBowlStaggersOuterRing() {
+        let item = FurnitureItem.bowl
         let offs = slotOffsets(count: item.feedSlots, cellWidth: item.cellWidth)
         XCTAssertEqual(offs.count, 4)
 
@@ -415,13 +414,21 @@ final class BowlSlotLayoutTests: XCTestCase {
         }
     }
 
-    /// 长碗容量必须大于圆碗 —— 否则贵的那个没有理由买
-    func testLongBowlHoldsMoreThanRound() {
-        XCTAssertGreaterThan(FurnitureItem.longBowl.feedSlots,
-                             FurnitureItem.bowl.feedSlots)
-        XCTAssertGreaterThan(FurnitureItem.longBowl.price,
-                             FurnitureItem.bowl.price,
-                             "容量更大就该更贵")
+    /// **嘴要对准碗，不是身体中心对准碗。**
+    ///
+    /// 你报的问题：吃饭时宠物过去的位置不对。
+    /// 根因是原公式算的是节点中心到碗中心的距离，
+    /// 而嘴比中心前伸 11-12 源像素（实测鼻尖 x=27/28，格中心 16）——
+    /// 所以宠物站得离碗太远，像在旁边发呆。
+    func testMouthReachIsMeasuredPerBreed() {
+        XCTAssertEqual(PetBreed.cat.layout.mouthReach, 11, "猫实测鼻尖 x=27")
+        XCTAssertEqual(PetBreed.dog.layout.mouthReach, 12, "狗实测鼻尖 x=28")
+        for b in PetBreed.all {
+            let m = b.layout.mouthReach
+            XCTAssertGreaterThan(m, 0, "\(b.id) 的前伸量该大于 0")
+            XCTAssertLessThan(m, b.layout.cell / 2,
+                              "\(b.id) 的嘴不可能超出格子一半")
+        }
     }
 }
 

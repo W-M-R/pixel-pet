@@ -702,8 +702,10 @@ final class FurnitureTests: XCTestCase {
 
     /// 碗的容量按侧视定 —— 只排左右两侧，不排上下
     func testBowlCapacities() {
-        XCTAssertEqual(FurnitureItem.bowl.feedSlots, 2, "圆碗左右各一")
-        XCTAssertEqual(FurnitureItem.longBowl.feedSlots, 4, "长碗左右各两")
+        // 只有一种碗（曾经还有个 1500 枚的长碗，差别只是容量数字，
+        // 而玩家不会为多一个吃饭位花一倍多的钱，已删）
+        XCTAssertEqual(FurnitureItem.all.filter(\.isBowl).count, 1)
+        XCTAssertEqual(FurnitureItem.bowl.feedSlots, 4, "左右各两只")
         XCTAssertTrue(FurnitureItem.bowl.isBowl)
         XCTAssertFalse(FurnitureItem.bed.isBowl, "床是装饰，没有吃饭位")
         XCTAssertFalse(FurnitureItem.plant.isBowl)
@@ -807,8 +809,6 @@ final class FurniturePurchaseTests: StoreTestCase {
         s.purchase(FurnitureItem.bowl)
         XCTAssertEqual(s.activeBowl?.id, "bowl")
 
-        s.purchase(FurnitureItem.longBowl)
-        XCTAssertEqual(s.activeBowl?.id, "long_bowl", "有长碗就用长碗")
         XCTAssertEqual(s.activeBowl?.feedSlots, 4)
     }
 

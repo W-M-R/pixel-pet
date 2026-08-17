@@ -67,8 +67,8 @@ struct PetHomeView: View {
                 store.stroke()
                 say(wasDrowsy ? .wokenUp : .stroked)
             }
-            scene.onFurnitureMoved = { id, ratio in
-                roomStore.move(id: id, toXRatio: ratio)
+            scene.onFurnitureMoved = { id, ratio, depth in
+                roomStore.move(id: id, toXRatio: ratio, depth: depth)
                 scene.layout = roomStore.layout
             }
 
