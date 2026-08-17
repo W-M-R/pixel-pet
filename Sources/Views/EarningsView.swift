@@ -85,7 +85,8 @@ struct EarningsView: View {
     private var capCard: some View {
         let stage = store.pet.stage
         let cap = stage.dailyCap
-        let remaining = store.wallet.remainingCap(stage: stage)
+        let remaining = store.wallet.remainingCap(stage: stage,
+                                                  petID: store.pet.id)
         let used = cap - remaining
 
         return VStack(alignment: .leading, spacing: Pixel.u(1.5)) {

@@ -168,6 +168,8 @@ struct RewardEngine {
             avgSatiety: averageLevel(offlineHours: hours, cycleHours: hungerCycle),
             avgMood: averageLevel(offlineHours: hours,
                                   cycleHours: pet.breed.moodCycleHours),
-            remainingCap: wallet.remainingCap(stage: pet.stage, at: now))
+            // 额度按宠物分开 —— 每只各有一份（养两只收入翻倍，粮钱也翻倍）
+            remainingCap: wallet.remainingCap(stage: pet.stage,
+                                              petID: pet.id, at: now))
     }
 }

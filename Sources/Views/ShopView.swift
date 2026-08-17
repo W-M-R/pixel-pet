@@ -13,6 +13,8 @@ struct ShopView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var toast: String?
+    /// 每个品种各自选中的毛色。**毛色在购买时定死**，所以要在这里选。
+    @State private var coat: [String: Int] = [:]
 
     var body: some View {
         // 自带 NavigationStack —— 它现在总是以 sheet 出现（主页商店图标、
@@ -90,12 +92,15 @@ struct ShopView: View {
     }
 
     private func row(_ breed: PetBreed) -> some View {
-        let owned = store.owns(breed)
+        // **不再有「已拥有」概念** —— 每次购买都是多养一只，
+        // 同品种不同色（甚至同色）都可以养多只。
         let affordable = store.wallet.coins >= breed.price
+        let picked = coat[breed.id] ?? 0
+        let ownedCount = store.pets.filter { $0.breedID == breed.id }.count
 
         return VStack(spacing: Pixel.u(2)) {
             HStack(spacing: Pixel.u(3)) {
-                BreedPortrait(breed: breed, colorIndex: 0, size: Pixel.u(16))
+                BreedPortrait(breed: breed, colorIndex: picked, size: Pixel.u(16))
 
                 VStack(alignment: .leading, spacing: Pixel.u(1)) {
                     Text(verbatim: L(breed.nameKey))
@@ -104,9 +109,21 @@ struct ShopView: View {
                     Text(verbatim: L(breed.traitKey))
                         .font(Pixel.mono(Pixel.labelSize))
                         .foregroundStyle(Pixel.textDim.color)
+                    if ownedCount > 0 {
+                        Text(verbatim: String(format: L("shop.owned_count"), ownedCount))
+                            .font(Pixel.mono(Pixel.labelSize))
+                            .foregroundStyle(Pixel.hygiene.color)
+                    }
                 }
 
                 Spacer(minLength: 0)
+            }
+
+            // 毛色在这里选 —— 买完就定死，之后只能改名字
+            if breed.colorCount > 1 {
+                CoatPicker(breed: breed, colorIndex: Binding(
+                    get: { coat[breed.id] ?? 0 },
+                    set: { coat[breed.id] = $0 }))
             }
 
             // 属性用共享面板 —— 原来压成一行文字，信息密度太低，
@@ -115,39 +132,34 @@ struct ShopView: View {
 
             // 购买按钮 / 已拥有标记
             Button {
-                guard !owned else { return }
                 guard affordable else {
                     showToast(L("shop.cannot_afford"))
                     return
                 }
-                store.purchase(breed)
+                store.purchase(breed, colorIndex: picked)
                 showToast(String(format: L("shop.purchased"),
                                  L(breed.nameKey)))
             } label: {
                 HStack(spacing: Pixel.u(1)) {
-                    if owned {
-                        Text(verbatim: L("shop.owned"))
-                            .font(Pixel.mono(Pixel.bodySize, .semibold))
-                            .foregroundStyle(Pixel.hygiene.color)
-                    } else {
-                        PixelIconView(icon: .coin, size: Pixel.u(3))
-                        Text(verbatim: "\(breed.price)")
-                            .font(Pixel.mono(Pixel.bodySize, .semibold))
-                            .foregroundStyle(affordable
-                                             ? Pixel.coin.color
-                                             : Pixel.warn.color)
-                    }
+                    Text(verbatim: L("shop.adopt"))
+                        .font(Pixel.mono(Pixel.bodySize, .semibold))
+                        .foregroundStyle(Pixel.text.color)
+                    PixelIconView(icon: .coin, size: Pixel.u(3))
+                    Text(verbatim: "\(breed.price)")
+                        .font(Pixel.mono(Pixel.bodySize, .semibold))
+                        .foregroundStyle(affordable
+                                         ? Pixel.coin.color
+                                         : Pixel.warn.color)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, Pixel.u(2))
                 .background(
-                    PixelPanel(fill: owned ? Pixel.buttonDark : Pixel.button,
-                               lite: owned ? Pixel.buttonDark : Pixel.buttonLite,
+                    PixelPanel(fill: Pixel.button,
+                               lite: Pixel.buttonLite,
                                dark: Pixel.buttonDark)
                 )
             }
             .buttonStyle(.plain)
-            .disabled(owned)
         }
         .padding(Pixel.u(2.5))
         .background(PixelPanel(fill: Pixel.panelDark,

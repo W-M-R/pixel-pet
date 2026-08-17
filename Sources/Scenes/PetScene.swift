@@ -148,7 +148,27 @@ final class PetScene: SKScene {
         self.colorIndex = colorIndex
         self.stage = stage
         loadSheets()
-        if pet != nil { applyWalkAnimation() }
+        guard pet != nil else { return }
+
+        // **按当前行为重新贴图，不能一律播走路动画。**
+        //
+        // 曾经这里无条件调 `applyWalkAnimation()`。宠物站着不动时
+        // （`.idle`，也是大多数时候）走路动画会被 idle 的单帧贴图盖掉 ——
+        // 而 `update()` 的 `.idle` 分支并不重设贴图，
+        // 所以**换毛色后画面纹丝不动**，看起来像「毛色只能选一次」。
+        // 睡觉时同理，得重贴睡姿帧而不是站起来走。
+        switch behavior {
+        case .sleeping:
+            applySleepPose()
+        case .idle, .startled:
+            applyIdlePose()
+        case .wandering, .following:
+            applyWalkAnimation()
+        case .eating:
+            // 咀嚼动画有完成回调驱动状态退出，中途换帧会打断它。
+            // 吃完自然会回 idle 并重贴，这里不动。
+            break
+        }
     }
 
     /// 成年用源图，其余阶段用 tools/make_stages.py 生成的派生 sheet。

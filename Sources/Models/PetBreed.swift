@@ -167,8 +167,16 @@ struct PetBreed: Identifiable, Hashable, Codable, Sendable {
     /// 这正是想要的：**认真照顾的玩家不被品种选择惩罚**。
     let goldMultiplier: Double
 
-    /// 是否是开局可选的基础品种
-    var isStarter: Bool { price == 0 }
+    /// 是否是开局可选的基础品种。
+    ///
+    /// **不再用 `price == 0` 判断** —— 现在所有品种都要钱（每个品种是
+    /// 一只独立的宠物，免费送等于送一份额度收益）。
+    /// 开局候选由 `starterIDs` 显式列出。
+    var isStarter: Bool { Self.starterIDs.contains(id) }
+
+    /// 开局可选的品种 id。加新动物时决定它是否出现在开局流程里 ——
+    /// 通常不加（开局选项太多反而难选），让它只在商店出现。
+    static let starterIDs: Set<String> = ["cat", "dog"]
 
     var sheetName: String { id }
 
@@ -187,8 +195,7 @@ struct PetBreed: Identifiable, Hashable, Codable, Sendable {
     static let cat = PetBreed(
         id: "cat", nameKey: "breed.cat",
         layout: .lpc(footPadding: 5),      // 实测内容底边 y=26 → 31-26
-
-        price: 0, traitKey: "trait.balanced",
+        price: 4000, traitKey: "trait.balanced",
         moodCycleHours: 18, hygieneCycleHours: 72, goldMultiplier: 1.00)
 
     /// 狗：黏人型，开局可选。心情掉得快，但金币加成更高。
@@ -208,14 +215,19 @@ struct PetBreed: Identifiable, Hashable, Codable, Sendable {
         layout: .lpc(footPadding: 3),      // 实测 y=28 → 31-28。
                                            // 原来硬编码 5，狗影子偏 8pt
 
-        price: 0, traitKey: "trait.clingy",
+        price: 4000, traitKey: "trait.clingy",
         moodCycleHours: 14, hygieneCycleHours: 72, goldMultiplier: 1.10)
 
     /// 开局可选的品种（免费）
     static var starters: [PetBreed] { all.filter(\.isStarter) }
 
-    /// 商店里能买的品种
-    static var purchasable: [PetBreed] { all.filter { !$0.isStarter } }
+    /// 商店里能买的品种。
+    ///
+    /// **现在是全部品种** —— 每个品种都是一只可以额外养的宠物，
+    /// 包括开局那两个（想养第二只猫也行）。
+    /// 曾经这里过滤掉 starter，因为那时「买品种 = 解锁外观」，
+    /// 已经拥有的没必要再买。
+    static var purchasable: [PetBreed] { all }
 
     static let all: [PetBreed] = [.cat, .dog]
 

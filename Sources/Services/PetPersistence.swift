@@ -13,9 +13,9 @@ import Foundation
 /// 抽出后 `PetStore` 只依赖这个协议，测试可以给内存实现，
 /// 不再需要建临时目录、也不用在 tearDown 里清理。
 protocol PetPersistence {
-    func loadPet() -> PetState?
+    func loadPets() -> [PetState]
     func loadWallet() -> PetWallet?
-    func save(pet: PetState)
+    func save(pets: [PetState])
     func save(wallet: PetWallet)
 }
 
@@ -40,8 +40,19 @@ struct FilePersistence: PetPersistence {
         walletURL = directory.appendingPathComponent("wallet.json")
     }
 
-    func loadPet() -> PetState? {
-        decode(PetState.self, from: petURL, label: "pet")
+    /// 读全部宠物。
+    ///
+    /// 兼容两种格式：新的是数组，旧的是单个对象（单宠时期）。
+    /// 先试数组，失败再试单个 —— 反过来的话数组会被当成坏数据丢掉。
+    func loadPets() -> [PetState] {
+        if let list = decode([PetState].self, from: petURL, label: "pets") {
+            return list
+        }
+        // 旧存档：单个对象。它的 id 会被解码成 "primary"（见 PetState）。
+        if let one = decodeQuietly(PetState.self, from: petURL) {
+            return [one]
+        }
+        return []
     }
 
     func loadWallet() -> PetWallet? {
@@ -57,6 +68,13 @@ struct FilePersistence: PetPersistence {
     /// 但没有任何地方提示「你的存档没读进去」，白查了很久。
     ///
     /// 线上仍然降级到默认值（总比崩了好），但 DEBUG 下直接断言。
+    /// 静默解码。用于「先试新格式再试旧格式」这种预期会失败的场景 ——
+    /// 那种失败不是错误，不该触发 assert。
+    private func decodeQuietly<T: Decodable>(_ type: T.Type, from url: URL) -> T? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
+    }
+
     private func decode<T: Decodable>(_ type: T.Type,
                                       from url: URL,
                                       label: String) -> T? {
@@ -64,15 +82,19 @@ struct FilePersistence: PetPersistence {
         do {
             return try JSONDecoder().decode(type, from: data)
         } catch {
-            assertionFailure("\(label).json 解码失败，将退回默认值：\(error)")
+            // pets 数组读失败可能只是旧的单对象格式，调用方会再试一次。
+            // 其余情况仍然要吼 —— 静默退回默认值曾让我白查很久。
+            if label != "pets" {
+                assertionFailure("\(label).json 解码失败，将退回默认值：\(error)")
+            }
             NSLog("[PixelPet] %@.json 解码失败：%@", label, "\(error)")
             return nil
         }
     }
 
     /// 写盘用 `.atomic` —— 中途被杀不会留下半个文件
-    func save(pet: PetState) {
-        guard let d = try? JSONEncoder().encode(pet) else { return }
+    func save(pets: [PetState]) {
+        guard let d = try? JSONEncoder().encode(pets) else { return }
         try? d.write(to: petURL, options: .atomic)
     }
 
@@ -86,22 +108,22 @@ struct FilePersistence: PetPersistence {
 ///
 /// 还能断言「该落盘的时候真的落盘了」，这是文件实现给不了的。
 final class MemoryPersistence: PetPersistence {
-    private var pet: PetState?
+    private var pets: [PetState] = []
     private var wallet: PetWallet?
 
     private(set) var petSaveCount = 0
     private(set) var walletSaveCount = 0
 
-    init(pet: PetState? = nil, wallet: PetWallet? = nil) {
-        self.pet = pet
+    init(pets: [PetState] = [], wallet: PetWallet? = nil) {
+        self.pets = pets
         self.wallet = wallet
     }
 
-    func loadPet() -> PetState? { pet }
+    func loadPets() -> [PetState] { pets }
     func loadWallet() -> PetWallet? { wallet }
 
-    func save(pet: PetState) {
-        self.pet = pet
+    func save(pets: [PetState]) {
+        self.pets = pets
         petSaveCount += 1
     }
 

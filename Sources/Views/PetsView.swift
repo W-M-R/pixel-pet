@@ -19,12 +19,8 @@ struct PetsView: View {
 
     private var pet: PetState { store.pet }
 
-    /// 已拥有的品种。当前这只排在最前。
-    private var owned: [PetBreed] {
-        PetBreed.all
-            .filter { store.wallet.owns($0) }
-            .sorted { a, _ in a.id == pet.breedID }
-    }
+    /// 我养的全部宠物。顺序与主页一致。
+    private var myPets: [PetState] { store.pets }
 
     var body: some View {
         NavigationStack {
@@ -128,7 +124,7 @@ struct PetsView: View {
                                        lite: Pixel.button,
                                        dark: Pixel.panelDark))
 
-            Text(verbatim: L("settings.name.footer"))
+            Text(verbatim: L("pets.name_footer"))
                 .font(Pixel.mono(Pixel.labelSize))
                 .foregroundStyle(Pixel.textDim.color)
         }
@@ -230,31 +226,30 @@ struct PetsView: View {
                     .font(Pixel.mono(Pixel.bodySize, .semibold))
                     .foregroundStyle(Pixel.text.color)
                 Spacer()
-                Text(verbatim: "\(owned.count) / \(PetBreed.all.count)")
+                Text(verbatim: "\(myPets.count)")
                     .font(Pixel.mono(Pixel.labelSize))
                     .foregroundStyle(Pixel.textDim.color)
             }
 
-            ForEach(owned) { breed in
-                let isCurrent = breed.id == pet.breedID
+            // 每只宠物一行，点一下切换查看。
+            // ⚠️ 用 `p.id` 而非 breedID 区分 —— 可以养两只同品种不同色的。
+            ForEach(myPets) { p in
+                let isCurrent = p.id == store.selectedPetID
                 Button {
-                    guard !isCurrent else { return }
-                    // 换品种时毛色归零 —— 不同品种的毛色数量可能不同
-                    store.choose(breedID: breed.id, colorIndex: 0)
+                    store.select(petID: p.id)
+                    draftName = p.name
                     now = Date()
                 } label: {
                     HStack(spacing: Pixel.u(2)) {
-                        // 当前这只用它真实的毛色，其余品种用 0 号。
-                        // 原来一律传 0 —— 换毛色后这一行的立绘不变，
-                        // 看起来像「毛色只能选一次」。
-                        BreedPortrait(breed: breed,
-                                      colorIndex: isCurrent ? pet.colorIndex : 0,
+                        BreedPortrait(breed: p.breed, colorIndex: p.colorIndex,
                                       size: Pixel.u(10))
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(verbatim: L(breed.nameKey))
+                            Text(verbatim: p.name.isEmpty
+                                 ? L(p.breed.nameKey) : p.name)
                                 .font(Pixel.mono(Pixel.bodySize, .semibold))
                                 .foregroundStyle(Pixel.text.color)
-                            Text(verbatim: L(breed.traitKey))
+                            Text(verbatim: L("pets.stage_age",
+                                             L(p.stage.displayNameKey), p.ageInDays))
                                 .font(Pixel.mono(Pixel.labelSize))
                                 .foregroundStyle(Pixel.textDim.color)
                         }
@@ -272,18 +267,6 @@ struct PetsView: View {
                     )
                 }
                 .buttonStyle(.plain)
-            }
-
-            // 毛色。放在花名册下面 —— 它改的是"当前这只"，
-            // 所以要紧跟在品种选择之后。
-            if pet.breed.colorCount > 1 {
-                Text(verbatim: L("settings.coat"))
-                    .font(Pixel.mono(Pixel.labelSize))
-                    .foregroundStyle(Pixel.textDim.color)
-                    .padding(.top, Pixel.u(1))
-                CoatPicker(breed: pet.breed, colorIndex: Binding(
-                    get: { pet.colorIndex },
-                    set: { store.choose(breedID: pet.breedID, colorIndex: $0) }))
             }
         }
         .padding(Pixel.u(3))

@@ -176,11 +176,11 @@ final class PetStoreTests: StoreTestCase {
     /// 用内存存档断言「save 被调用过」，比检查文件存在更直接。
     func testFirstLaunchPersistsImmediately() {
         let mem = MemoryPersistence()
-        XCTAssertNil(mem.loadPet(), "前提：空存档")
+        XCTAssertNil(mem.loadPets().first, "前提：空存档")
 
         _ = Fixture.store(persistence: mem)
 
-        XCTAssertNotNil(mem.loadPet(), "首启应立刻写入宠物")
+        XCTAssertNotNil(mem.loadPets().first, "首启应立刻写入宠物")
         XCTAssertNotNil(mem.loadWallet(), "首启应立刻写入钱包")
     }
 
@@ -198,14 +198,13 @@ final class PetStoreTests: StoreTestCase {
     func testWalletSurvivesPetReset() {
         let store = makeStore()
         var w = store.wallet
-        w.debugSetCoins(500)
-        w.ownedBreeds.insert(PetBreed.dog.id)   // choose 要求已拥有
+        w.debugSetCoins(20000)
         store.debugSet(wallet: w)
         store.play()                      // 触发 persist
 
-        // 换宠物不该清空钱包 —— 这是钱包独立存档的设计意图
-        XCTAssertTrue(store.choose(breedID: PetBreed.dog.id, colorIndex: 1))
-        XCTAssertEqual(store.wallet.coins, 500)
+        // 多养一只不该清空钱包 —— 这是钱包独立存档的设计意图
+        XCTAssertTrue(store.purchase(.dog))
+        XCTAssertEqual(store.wallet.coins, 20000 - PetBreed.dog.price)
     }
 
     func testRenameTrimsAndPersists() {
@@ -222,14 +221,44 @@ final class PetStoreTests: StoreTestCase {
     /// ⚠️ `choose` 现在要求**已拥有**该品种（否则免费就能玩到所有宠物），
     /// 所以要先解锁。这个测试原来直接 choose，加了拥有校验后失败 ——
     /// 是校验生效的证据，不是回归。
-    func testChooseRecordsTriedBreeds() {
+    /// 买一只新宠物会记进 triedBreeds（收藏成就用）
+    func testPurchaseRecordsTriedBreeds() {
         let store = makeStore()
         var w = store.wallet
-        w.ownedBreeds.insert(PetBreed.dog.id)
+        w.debugSetCoins(20000)
         store.debugSet(wallet: w)
 
-        XCTAssertTrue(store.choose(breedID: PetBreed.dog.id, colorIndex: 0))
+        XCTAssertTrue(store.purchase(.dog))
+        XCTAssertEqual(store.pets.count, 2, "买了就该真的多一只")
         XCTAssertTrue(store.pet.triedBreeds?.contains("dog") ?? false)
+        XCTAssertEqual(store.pet.breedID, "dog", "买完自动选中新宠物")
+    }
+
+    /// **choose 只切换选中，不改变宠物本身。**
+    ///
+    /// 单宠时期它会把当前宠物「变成」另一个品种（买品种 = 解锁外观）。
+    /// 现在每个品种是独立的一只，choose 的语义变成「看哪一只」。
+    func testChooseOnlySelects() {
+        let store = makeStore()
+        store.completeOnboarding(breedID: "cat", colorIndex: 1, name: "咪咪")
+        var w = store.wallet
+        w.debugSetCoins(20000)
+        store.debugSet(wallet: w)
+        store.purchase(.dog, colorIndex: 2)
+
+        XCTAssertEqual(store.pets.count, 2)
+
+        XCTAssertTrue(store.choose(breedID: "cat"))
+        XCTAssertEqual(store.pet.breedID, "cat")
+        XCTAssertEqual(store.pet.colorIndex, 1, "猫的毛色不该被狗的覆盖")
+        XCTAssertEqual(store.pet.name, "咪咪")
+
+        XCTAssertTrue(store.choose(breedID: "dog"))
+        XCTAssertEqual(store.pet.breedID, "dog")
+        XCTAssertEqual(store.pet.colorIndex, 2)
+
+        // 没养过的品种切不过去
+        XCTAssertFalse(store.choose(breedID: "nonexistent"))
     }
 
     // MARK: - 结算
@@ -455,17 +484,16 @@ final class OnboardingStoreTests: StoreTestCase {
         let store = makeStore()
         store.completeOnboarding(breedID: PetBreed.cat.id, colorIndex: 0,
                                  name: "咪咪")
-        // 手动解锁狗（模拟买过）
         var w = store.wallet
-        w.ownedBreeds.insert(PetBreed.dog.id)
+        w.debugSetCoins(20000)
         store.debugSet(wallet: w)
+        XCTAssertTrue(store.purchase(.dog))
 
         let before = store.wallet.coins
-        XCTAssertTrue(store.choose(breedID: PetBreed.dog.id, colorIndex: 1))
-        XCTAssertEqual(store.wallet.coins, before, "切换不该再扣钱")
-
-        // 切回去也免费
-        XCTAssertTrue(store.choose(breedID: PetBreed.cat.id, colorIndex: 0))
+        // 在两只之间切换查看是免费的
+        XCTAssertTrue(store.choose(breedID: PetBreed.dog.id))
+        XCTAssertEqual(store.wallet.coins, before, "切换查看不该扣钱")
+        XCTAssertTrue(store.choose(breedID: PetBreed.cat.id))
         XCTAssertEqual(store.wallet.coins, before)
     }
 
@@ -543,7 +571,7 @@ final class PetPersistenceTests: XCTestCase {
         let store = Fixture.store(persistence: mem)
         store.play()
 
-        XCTAssertNotNil(mem.loadPet())
+        XCTAssertNotNil(mem.loadPets().first)
         XCTAssertNotNil(mem.loadWallet())
     }
 
@@ -551,7 +579,7 @@ final class PetPersistenceTests: XCTestCase {
     func testLoadsExistingSave() {
         var pet = PetState()
         pet.name = "已存在"
-        let mem = MemoryPersistence(pet: pet, wallet: PetWallet())
+        let mem = MemoryPersistence(pets: [pet], wallet: PetWallet())
 
         let store = Fixture.store(persistence: mem)
         XCTAssertEqual(store.pet.name, "已存在")
@@ -589,7 +617,7 @@ final class PetPersistenceTests: XCTestCase {
             XCTAssertEqual(store.pet.name, "一致性")
 
             // 重新加载应拿到同样的值
-            XCTAssertEqual(storage.loadPet()?.name, "一致性")
+            XCTAssertEqual(storage.loadPets().first?.name, "一致性")
         }
     }
 }
@@ -724,32 +752,45 @@ final class PlaythroughTests: StoreTestCase {
         w.debugSetCoins(20000)
         s.debugSet(wallet: w)
 
-        // 两个 starter 都是免费的，直接解锁
-        XCTAssertTrue(s.purchase(.dog))
+        XCTAssertTrue(s.purchase(.dog, colorIndex: 2))
         XCTAssertTrue(s.wallet.owns(.dog))
-
-        XCTAssertTrue(s.choose(breedID: "dog", colorIndex: 2))
-        XCTAssertEqual(s.pet.breedID, "dog")
+        XCTAssertEqual(s.pets.count, 2, "买第二只就该真的有两只")
+        XCTAssertEqual(s.pet.breedID, "dog", "买完自动选中")
         XCTAssertEqual(s.pet.colorIndex, 2)
 
-        // 换回来也要行 —— 买过就是永久拥有
-        XCTAssertTrue(s.choose(breedID: "cat", colorIndex: 3))
+        // 在两只之间切换查看
+        XCTAssertTrue(s.choose(breedID: "cat"))
         XCTAssertEqual(s.pet.breedID, "cat")
+        XCTAssertEqual(s.pets.count, 2, "切换不该改变数量")
         XCTAssertTrue(s.wallet.ledger.isBalanced)
     }
 
-    /// **毛色可以反复换。** 你报的 bug：看起来「选完一次就不能再选」。
-    /// 根因在 PetsView 花名册立绘写死 colorIndex: 0（已修），
-    /// store 这层本来就是好的 —— 这个测试锁住它。
-    func testCoatCanBeChangedRepeatedly() {
+    /// **毛色在购买时定死，之后不能改。**
+    ///
+    /// 这是你要的新规则。想要别的颜色就再买一只 ——
+    /// 每只都是独立的宠物，有自己的名字和状态。
+    func testCoatIsLockedAfterPurchase() {
         let s = makeStore()
-        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "T")
+        s.completeOnboarding(breedID: "cat", colorIndex: 1, name: "咪咪")
+        XCTAssertEqual(s.pet.colorIndex, 1)
 
-        for i in [1, 2, 3, 0, 2] {
-            XCTAssertTrue(s.choose(breedID: "cat", colorIndex: i))
-            XCTAssertEqual(s.pet.colorIndex, i, "毛色应能反复切换")
-        }
-        // 每次切换都该记进收藏成就
-        XCTAssertEqual(s.pet.triedColors?.count, 4)
+        // choose 不再接受毛色改动 —— 传什么都不影响已有宠物
+        s.choose(breedID: "cat", colorIndex: 3)
+        XCTAssertEqual(s.pet.colorIndex, 1, "毛色定死后不该被改")
+
+        // 名字仍然可以改
+        s.rename("新名字")
+        XCTAssertEqual(s.pet.name, "新名字")
+
+        // 想要别的颜色 → 再买一只
+        var w = s.wallet
+        w.debugSetCoins(20000)
+        s.debugSet(wallet: w)
+        XCTAssertTrue(s.purchase(.cat, colorIndex: 3))
+        XCTAssertEqual(s.pets.count, 2, "同品种不同色也是两只独立的宠物")
+        XCTAssertEqual(s.pet.colorIndex, 3)
+        // 第一只不受影响
+        XCTAssertEqual(s.pets[0].colorIndex, 1)
+        XCTAssertEqual(s.pets[0].name, "新名字")
     }
 }

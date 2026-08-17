@@ -12,7 +12,41 @@ import Observation
 @MainActor
 final class PetStore {
 
-    private(set) var pet: PetState
+    /// 全部宠物。**可以养多只** —— 商店买的每个品种都是一只独立的宠物，
+    /// 各有自己的名字、状态、收益额度。
+    ///
+    /// 顺序即主页从左到右的摆放顺序。
+    private(set) var pets: [PetState]
+
+    /// 当前选中的宠物 id。喂食/玩耍/洗澡三个按钮作用于它。
+    ///
+    /// 主页同时显示所有宠物，点一下切换选中。
+    private(set) var selectedPetID: String
+
+    /// 选中的那只。读写都作用在它身上。
+    ///
+    /// 保留 `pet` 这个名字，让原有的几十处调用点不用全改 ——
+    /// 单宠时期它就叫这个，语义也没变（「当前这只」）。
+    /// 找不到选中的就退回第一只（存档损坏时的兜底）。
+    var pet: PetState {
+        get { pets.first { $0.id == selectedPetID } ?? pets[0] }
+        set {
+            if let i = pets.firstIndex(where: { $0.id == newValue.id }) {
+                pets[i] = newValue
+            } else if let i = pets.firstIndex(where: { $0.id == selectedPetID }) {
+                pets[i] = newValue
+            } else {
+                pets[0] = newValue
+            }
+        }
+    }
+
+    /// 选中某只。喂食/玩耍/洗澡随即作用于它。
+    func select(petID: String) {
+        guard pets.contains(where: { $0.id == petID }) else { return }
+        selectedPetID = petID
+    }
+
     private(set) var wallet: PetWallet
 
     /// 存档后端。协议而非具体类型 —— 测试注入 `MemoryPersistence`。
@@ -39,17 +73,20 @@ final class PetStore {
         self.reminders = reminders ?? SystemReminders()
 
         // 用局部变量算好再赋值 —— init 里在所有 stored property 就位前
-        // 访问 self.pet / self.wallet 会编译失败。
-        let loadedPet = storage.loadPet()
-            ?? PetState(breedID: PetBreed.cat.id, colorIndex: 0, name: "")
+        // 访问 self.pets / self.wallet 会编译失败。
+        let loaded = storage.loadPets()
+        let list = loaded.isEmpty
+            ? [PetState(breedID: PetBreed.cat.id, colorIndex: 0, name: "")]
+            : loaded
         let loadedWallet = storage.loadWallet() ?? PetWallet()
 
-        self.pet = loadedPet
+        self.pets = list
+        self.selectedPetID = list[0].id
         self.wallet = loadedWallet
 
         // 首次启动必须立刻写盘 —— 否则 bornAt 每次启动都被重置，
         // 宠物永远显示「相伴第 0 天」。
-        if storage.loadPet() == nil { storage.save(pet: loadedPet) }
+        if loaded.isEmpty { storage.save(pets: list) }
         if storage.loadWallet() == nil { storage.save(wallet: loadedWallet) }
 
         if runsHeartbeat { startHeartbeat() }
@@ -106,26 +143,53 @@ final class PetStore {
 
     /// 结算奖励。返回结果供 UI 展示，nil = 无收益。
     /// 要在 markSeen() 之后调用 —— 连续天数会影响成就判定。
+    ///
+    /// **每只宠物各结算一次，各占自己的额度。** 养两只收入翻倍
+    /// （粮钱也翻倍）。返回值把各只的收益合并，UI 只关心总数。
+    ///
+    /// ⚠️ 一次性奖励（成就、上线签到）只算一次 —— 它们属于玩家而非宠物。
+    /// 所以第一只之后要把已领集合带进去，否则同一条成就会被发 N 次。
     @discardableResult
     func settleRewards(now: Date = Date()) -> RewardSettlement? {
-        let ctx = RewardEngine.makeContext(pet: pet, wallet: wallet, now: now)
-        let result = RewardEngine.default.settle(ctx)
-        guard !result.isEmpty else { return nil }
+        var total = 0
+        var capped = 0
+        var claimed: [String] = []
+        var messages: [(key: String, args: [CVarArg])] = []
+        var payouts: [(reason: CoinReason, coins: Int, ruleID: String)] = []
 
-        // 逐笔入账 —— 账本里能分清签到 / 成就 / 看家。
-        // 之前是「看家一笔 + 其余合并一笔」，排查时分不出后者的来源。
-        for p in result.payouts {
-            if p.reason.countsTowardDailyCap {
-                // 占额度的要走 recordEarning：它额外维护 todayEarned 与跨日重置
-                wallet.recordEarning(p.coins, at: now)
-            } else {
-                wallet.recordBonus(p.coins, reason: p.reason, at: now, note: p.ruleID)
+        for p in pets {
+            let ctx = RewardEngine.makeContext(pet: p, wallet: wallet, now: now)
+            let r = RewardEngine.default.settle(ctx)
+            guard !r.isEmpty else { continue }
+
+            for out in r.payouts {
+                if out.reason.countsTowardDailyCap {
+                    // 占额度的走 recordEarning：它维护 todayEarnedByPet 与跨日重置
+                    wallet.recordEarning(out.coins, petID: p.id, at: now)
+                } else {
+                    wallet.recordBonus(out.coins, reason: out.reason,
+                                       at: now, note: out.ruleID)
+                }
             }
+            // 立刻写进已领集合 —— 下一只结算时 RewardEngine 就会跳过它们，
+            // 否则两只宠物会把同一条成就各领一遍。
+            for id in r.newlyClaimed { wallet.claimedRewards.insert(id) }
+
+            total += r.totalCoins
+            capped += r.cappedCoins
+            claimed += r.newlyClaimed
+            messages += r.messages
+            payouts += r.payouts
         }
-        for id in result.newlyClaimed { wallet.claimedRewards.insert(id) }
+
+        guard total > 0 || !messages.isEmpty else { return nil }
         wallet.lastCollectedAt = now
         persist()
-        return result
+        return RewardSettlement(totalCoins: total,
+                                cappedCoins: capped,
+                                newlyClaimed: claimed,
+                                messages: messages,
+                                payouts: payouts)
     }
 
     /// 某条成就的进度。已领取或无进度型返回 nil。
@@ -267,21 +331,17 @@ final class PetStore {
         persist()
     }
 
-    /// 切换品种/毛色。
+    /// 选中某个品种的宠物（用于宠物页切换查看）。
     ///
-    /// ⚠️ 只能切**已拥有**的品种。买过就永久解锁，之后免费切换 ——
-    /// 「买」是一次性解锁而非消耗品，否则玩家会不敢换。
+    /// ⚠️ **不再改变宠物的品种和毛色。** 现在每个品种是一只独立的宠物，
+    /// 毛色在购买时定死 —— 曾经这个方法会把当前宠物「变成」另一个品种，
+    /// 那是单宠时期「买品种 = 解锁外观」模型的产物。
     @discardableResult
-    func choose(breedID: String, colorIndex: Int) -> Bool {
-        let breed = PetBreed.byID(breedID)
-        guard wallet.owns(breed) else { return false }
-
-        pet.breedID = breedID
-        pet.colorIndex = colorIndex
-        // 记录用于收藏成就
-        var breeds = pet.triedBreeds ?? []; breeds.insert(breedID); pet.triedBreeds = breeds
-        var colors = pet.triedColors ?? []; colors.insert(colorIndex); pet.triedColors = colors
-        persist()
+    func choose(breedID: String, colorIndex: Int = 0) -> Bool {
+        guard let target = pets.first(where: { $0.breedID == breedID }) else {
+            return false
+        }
+        selectedPetID = target.id
         return true
     }
 
@@ -290,37 +350,59 @@ final class PetStore {
     /// 是否还没走完开局流程（选宠物 + 起名）
     var needsOnboarding: Bool { !wallet.hasCompletedOnboarding }
 
-    /// 完成开局：扣掉首宠价格、解锁该品种、起名。
+    /// 完成开局：扣掉首宠价格、起名。
     ///
     /// 首宠从启动资金里扣（5000 送、4000 扣），让「选宠物」有重量感 ——
     /// 直接送的话开局的选择缺少代价。剩下 1000 作为起步资金。
+    ///
+    /// **毛色在这里定死。** 之后只能改名字，不能换色 ——
+    /// 想要别的颜色就再买一只（每只都是独立的宠物）。
     @discardableResult
     func completeOnboarding(breedID: String, colorIndex: Int,
                             name: String) -> Bool {
         let breed = PetBreed.byID(breedID)
-        guard breed.isStarter else { return false }   // 开局只能选免费品种
-        guard wallet.spend(PetWallet.starterPrice, reason: .starterPet,
+        guard wallet.spend(breed.price, reason: .starterPet,
                            note: breed.id) else { return false }
         wallet.ownedBreeds.insert(breed.id)
         wallet.hasCompletedOnboarding = true
 
-        pet.breedID = breed.id
-        pet.colorIndex = colorIndex
-        pet.name = String(name.trimmingCharacters(in: .whitespacesAndNewlines)
-                              .prefix(12))
-        var breeds = pet.triedBreeds ?? []; breeds.insert(breed.id)
-        pet.triedBreeds = breeds
-        var colors = pet.triedColors ?? []; colors.insert(colorIndex)
-        pet.triedColors = colors
+        // 开局那只直接改写 pets[0]（init 造的占位），
+        // 而不是 append —— 否则会多出一只没人要的默认猫。
+        var first = pets[0]
+        first.breedID = breed.id
+        first.colorIndex = colorIndex
+        first.name = String(name.trimmingCharacters(in: .whitespacesAndNewlines)
+                                .prefix(12))
+        var breeds = first.triedBreeds ?? []; breeds.insert(breed.id)
+        first.triedBreeds = breeds
+        var colors = first.triedColors ?? []; colors.insert(colorIndex)
+        first.triedColors = colors
+        pets[0] = first
+        selectedPetID = first.id
 
         persist()
         return true
     }
 
-    /// 买一个新品种。买完不自动切换 —— 让玩家自己决定什么时候换。
+    /// 买一只新宠物。
+    ///
+    /// **这是真的多一只**，不是解锁外观 —— 新宠物有自己的 id、名字、
+    /// 状态时间戳、收益额度。主页会同时显示所有宠物。
+    ///
+    /// 毛色在购买时定死，之后不能改。
     @discardableResult
-    func purchase(_ breed: PetBreed) -> Bool {
-        guard wallet.purchase(breed) else { return false }
+    func purchase(_ breed: PetBreed, colorIndex: Int = 0) -> Bool {
+        guard wallet.canAfford(breed) else { return false }
+        guard wallet.spend(breed.price, reason: .breedPurchase,
+                           note: breed.id) else { return false }
+        wallet.ownedBreeds.insert(breed.id)
+
+        var newPet = PetState(breedID: breed.id, colorIndex: colorIndex, name: "")
+        newPet.triedBreeds = [breed.id]
+        newPet.triedColors = [colorIndex]
+        pets.append(newPet)
+        selectedPetID = newPet.id      // 买完直接选中它，方便马上起名
+
         persist()
         return true
     }
@@ -366,7 +448,7 @@ final class PetStore {
 
     private func persist() {
         storage.save(wallet: wallet)
-        storage.save(pet: pet)
+        storage.save(pets: pets)
         tick = Date()
         // 状态变了就重排提醒 —— 因为「何时会饿」是从时间戳算的
         let name = pet.name.isEmpty ? L(pet.breed.nameKey) : pet.name

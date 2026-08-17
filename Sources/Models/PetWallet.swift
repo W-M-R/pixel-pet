@@ -27,11 +27,17 @@ struct PetWallet: Codable, Equatable {
     /// 累计赚取（只增不减，成就用）
     var totalEarned: Int
 
-    /// 今日已从看家收益赚到的额度。跨日由 `recordEarning` 自动重置。
+    /// 今日已从看家收益赚到的额度，**按宠物分开记**。
+    ///
+    /// key 是 `PetState.id`。每只宠物各有一份额度（你定的方案）——
+    /// 养两只收入翻倍，但粮钱也翻倍。
     ///
     /// **必须落盘。** 只在内存里算的话，反复开关 app 每次都能拿满额度 ——
     /// 这是额度制最主要的刷币面。
-    var todayEarned: Int
+    var todayEarnedByPet: [String: Int]
+
+    /// 全部宠物今日合计。UI 展示用。
+    var todayEarned: Int { todayEarnedByPet.values.reduce(0, +) }
 
     /// `todayEarned` 对应的日期，用于判断跨日
     var lastEarnDate: Date
@@ -65,6 +71,10 @@ struct PetWallet: Codable, Equatable {
     ///
     /// 从启动资金里扣，让「选宠物」这件事有重量感 ——
     /// 直接送一只的话，开局的选择缺少代价。
+    ///
+    /// ⚠️ 真正扣的是 `PetBreed.price`（每个品种可以不同价）。
+    /// 这个常量只用于开局界面的文案展示，两者由
+    /// `ConfigTests.testStarterPriceMatchesBreeds` 断言一致。
     static let starterPrice = 4000
 
     init(now: Date = Date()) {
@@ -72,7 +82,7 @@ struct PetWallet: Codable, Equatable {
         lastCollectedAt = now
         boostUntil = nil
         totalEarned = 0
-        todayEarned = 0
+        todayEarnedByPet = [:]
         lastEarnDate = now
         claimedRewards = []
         ownedBreeds = []
@@ -108,26 +118,28 @@ struct PetWallet: Codable, Equatable {
 
     // MARK: - 每日额度
 
-    /// 今日剩余额度。跨日自动视为满额。
-    func remainingCap(stage: PetStage, at now: Date = Date()) -> Int {
+    /// 某只宠物今日剩余额度。跨日自动视为满额。
+    func remainingCap(stage: PetStage, petID: String, at now: Date = Date()) -> Int {
         let cap = stage.dailyCap
         guard Calendar.current.isDate(lastEarnDate, inSameDayAs: now) else {
             return cap
         }
-        return max(0, cap - todayEarned)
+        return max(0, cap - (todayEarnedByPet[petID] ?? 0))
     }
 
     /// 记一笔看家收益。跨日先归零，再累加。
     ///
     /// 日历逻辑收在这里，`PetStore` 只调一次 —— 避免跨日判断散落多处。
-    mutating func recordEarning(_ amount: Int, at now: Date = Date()) {
+    mutating func recordEarning(_ amount: Int,
+                                petID: String,
+                                at now: Date = Date()) {
         guard amount > 0 else { return }
         if !Calendar.current.isDate(lastEarnDate, inSameDayAs: now) {
-            todayEarned = 0
+            todayEarnedByPet = [:]          // 跨日整表清空
         }
-        todayEarned += amount
+        todayEarnedByPet[petID, default: 0] += amount
         lastEarnDate = now
-        earn(amount, reason: .offlineCare, at: now)
+        earn(amount, reason: .offlineCare, at: now, note: petID)
     }
 
     /// 记一笔不占额度的收入（上线奖励、成就）
@@ -195,7 +207,7 @@ struct PetWallet: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case coins, lastCollectedAt, boostUntil, totalEarned
-        case todayEarned, lastEarnDate, claimedRewards
+        case todayEarned, todayEarnedByPet, lastEarnDate, claimedRewards
         case ownedBreeds, hasCompletedOnboarding
         case ledger
     }
@@ -214,7 +226,14 @@ struct PetWallet: Codable, Equatable {
         }
         lastCollectedAt = try c.decodeIfPresent(Date.self, forKey: .lastCollectedAt) ?? Date()
         boostUntil = try c.decodeIfPresent(Date.self, forKey: .boostUntil)
-        todayEarned = try c.decodeIfPresent(Int.self, forKey: .todayEarned) ?? 0
+        if let byPet = try c.decodeIfPresent([String: Int].self, forKey: .todayEarnedByPet) {
+            todayEarnedByPet = byPet
+        } else {
+            // 旧存档只有一个总数、只有一只宠物。归到 "primary" 名下 ——
+            // 和 PetState 解码时给旧存档补的 id 一致，否则今日额度会凭空重置。
+            let legacy = try c.decodeIfPresent(Int.self, forKey: .todayEarned) ?? 0
+            todayEarnedByPet = legacy > 0 ? ["primary": legacy] : [:]
+        }
         lastEarnDate = try c.decodeIfPresent(Date.self, forKey: .lastEarnDate) ?? .distantPast
         claimedRewards = try c.decodeIfPresent(Set<String>.self, forKey: .claimedRewards) ?? []
         ownedBreeds = try c.decodeIfPresent(Set<String>.self, forKey: .ownedBreeds) ?? []
@@ -239,7 +258,8 @@ struct PetWallet: Codable, Equatable {
         try c.encode(lastCollectedAt, forKey: .lastCollectedAt)
         try c.encodeIfPresent(boostUntil, forKey: .boostUntil)
         try c.encode(totalEarned, forKey: .totalEarned)
-        try c.encode(todayEarned, forKey: .todayEarned)
+        try c.encode(todayEarnedByPet, forKey: .todayEarnedByPet)
+        try c.encode(todayEarned, forKey: .todayEarned)   // 冗余，供降级/排查
         try c.encode(lastEarnDate, forKey: .lastEarnDate)
         try c.encode(claimedRewards, forKey: .claimedRewards)
         try c.encode(ownedBreeds, forKey: .ownedBreeds)

@@ -31,7 +31,16 @@ enum PetSpecies: String, Codable, CaseIterable, Identifiable {
 ///
 /// 正解是存「上次喂食是什么时候」，需要用到饥饿度时按 `now - lastFedAt` 算。
 /// 这样无论 app 关多久、设备重启几次，读出来的值都是对的。
-struct PetState: Codable, Equatable {
+struct PetState: Codable, Equatable, Identifiable {
+    /// 这只宠物的唯一标识。
+    ///
+    /// **不能用 `breedID` 当身份** —— 现在可以同时养多只，
+    /// 将来养两只猫时它们的 breedID 相同但是两只不同的宠物
+    /// （各自的名字、状态、收益额度）。
+    ///
+    /// 旧存档没有这个字段，解码时补一个（见 `init(from:)`）。
+    var id: String
+
     /// 品种 ID（对应 PetBreed.id / Assets 文件名）。
     /// 用字符串而非枚举，这样加新宠物不用改数据结构、旧存档也能解。
     var breedID: String
@@ -113,10 +122,12 @@ struct PetState: Codable, Equatable {
         }
     }
 
-    init(breedID: String = PetBreed.cat.id,
+    init(id: String = UUID().uuidString,
+         breedID: String = PetBreed.cat.id,
          colorIndex: Int = 0,
          name: String = "",
          now: Date = Date()) {
+        self.id = id
         self.breedID = breedID
         self.colorIndex = colorIndex
         self.name = name
@@ -144,7 +155,7 @@ struct PetState: Codable, Equatable {
     // MARK: - 解码兼容
 
     private enum CodingKeys: String, CodingKey {
-        case breedID, species, colorIndex, name, bornAt
+        case id, breedID, species, colorIndex, name, bornAt
         case awakeUntil, lastSeenAt, lastFedAt, lastPlayedAt, lastCleanedAt
         case totalFeedCount, totalPlayCount, totalCleanCount
         case streakDays, lastStreakDay
@@ -155,6 +166,9 @@ struct PetState: Codable, Equatable {
     /// 不做这个兼容，老用户升级后存档解不出来，宠物会被重置。
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        // 旧存档只有一只宠物、没有 id。用固定值而非随机 UUID ——
+        // 随机的话每次解码都变，钱包里按宠物记的额度就对不上了。
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? "primary"
         if let bid = try c.decodeIfPresent(String.self, forKey: .breedID) {
             breedID = bid
         } else if let sp = try c.decodeIfPresent(String.self, forKey: .species) {
@@ -186,6 +200,7 @@ struct PetState: Codable, Equatable {
         try c.encode(breedID, forKey: .breedID)
         // 同时写 species，这样降级回旧版本也能读
         try c.encode(breedID, forKey: .species)
+        try c.encode(id, forKey: .id)
         try c.encode(colorIndex, forKey: .colorIndex)
         try c.encode(name, forKey: .name)
         try c.encode(bornAt, forKey: .bornAt)

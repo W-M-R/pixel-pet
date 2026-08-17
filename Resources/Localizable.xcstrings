@@ -2126,6 +2126,22 @@
         }
       }
     },
+    "pets.name_footer": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only the name can change. Coat is set at adoption."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只有名字可以改。毛色在收养时就定下来了。"
+          }
+        }
+      }
+    },
     "pets.record": {
       "localizations": {
         "en": {
@@ -2511,6 +2527,22 @@
         }
       }
     },
+    "shop.adopt": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adopt"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收养"
+          }
+        }
+      }
+    },
     "shop.cannot_afford": {
       "extractionState": "manual",
       "localizations": {
@@ -2558,6 +2590,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "已拥有"
+          }
+        }
+      }
+    },
+    "shop.owned_count": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d adopted"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已养 %d 只"
           }
         }
       }

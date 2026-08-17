@@ -166,13 +166,13 @@ final class EconomyTests: XCTestCase {
     func testCapResetsNextDay() {
         var w = PetWallet()
         let day1 = Date()
-        w.recordEarning(200, at: day1)
+        w.recordEarning(200, petID: "primary", at: day1)
         XCTAssertEqual(w.todayEarned, 200)
 
         let day2 = day1.addingTimeInterval(26 * 3600)
-        XCTAssertEqual(w.remainingCap(stage: .adult, at: day2),
+        XCTAssertEqual(w.remainingCap(stage: .adult, petID: "primary", at: day2),
                        PetStage.adult.dailyCap, "跨日应重置为满额")
-        w.recordEarning(50, at: day2)
+        w.recordEarning(50, petID: "primary", at: day2)
         XCTAssertEqual(w.todayEarned, 50, "跨日先归零再累加")
     }
 
@@ -180,8 +180,8 @@ final class EconomyTests: XCTestCase {
         var w = PetWallet()
         let now = Date()
         let cap = PetStage.adult.dailyCap
-        w.recordEarning(60, at: now)
-        XCTAssertEqual(w.remainingCap(stage: .adult, at: now), cap - 60)
+        w.recordEarning(60, petID: "primary", at: now)
+        XCTAssertEqual(w.remainingCap(stage: .adult, petID: "primary", at: now), cap - 60)
     }
 
     /// **额度制最主要的刷币面**：反复开关 app 不能绕过每日上限。
@@ -199,9 +199,9 @@ final class EconomyTests: XCTestCase {
             let c = RewardContext(
                 pet: pet, wallet: wallet, now: now, offlineHours: 6,
                 avgSatiety: 0.8, avgMood: 0.8,
-                remainingCap: wallet.remainingCap(stage: stage, at: now))
+                remainingCap: wallet.remainingCap(stage: stage, petID: "primary", at: now))
             if let out = rule.evaluate(c) {
-                wallet.recordEarning(out.coins, at: now)
+                wallet.recordEarning(out.coins, petID: "primary", at: now)
             }
             now = now.addingTimeInterval(60)   // 同一天内
         }
@@ -371,10 +371,10 @@ final class EconomyTests: XCTestCase {
                                                       cycleHours: cycle),
                 avgMood: moodOverride ?? RewardEngine.averageLevel(
                     offlineHours: gap, cycleHours: 18),
-                remainingCap: wallet.remainingCap(stage: stage, at: now))
+                remainingCap: wallet.remainingCap(stage: stage, petID: "primary", at: now))
             if let out = rule.evaluate(c) {
                 income += out.coins
-                wallet.recordEarning(out.coins, at: now)
+                wallet.recordEarning(out.coins, petID: "primary", at: now)
             }
             // 喂食：饱食从「离线后的值」补回，逐餐单独取整
             let after = max(0, 1 - gap / cycle)
