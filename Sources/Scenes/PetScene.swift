@@ -382,6 +382,13 @@ final class PetScene: SKScene {
         for (i, e) in items.sorted(by: { $0.footY > $1.footY }).enumerated() {
             e.node.zPosition = 10 + CGFloat(i)
         }
+        // 吃饭中的宠物强制盖碗之上 —— 头压住碗口才像"埋进碗里"。
+        // 否则按脚底排序时它在碗后面，头会被碗沿挡掉。
+        if let bowl = bowlNode {
+            for a in actors where a.isEating {
+                a.node.zPosition = bowl.zPosition + 0.5
+            }
+        }
         // 影子要跟着自己的宠物，且在它下面一层
         for a in actors {
             a.shadow.zPosition = a.node.zPosition - 0.5
@@ -559,18 +566,26 @@ final class PetScene: SKScene {
         }
     }
 
-    /// 围到碗边吃。
+    /// 围到碗边吃 —— **头要埋进碗里**。
     ///
-    /// **宠物站在碗的正后方**（碗在前、宠物在后），不是碗的左右两侧。
+    /// ## 素材事实
     ///
-    /// 原因是素材：LPC 的进食帧（r4）是**正面朝镜头低头**的对称姿态
-    /// （实测四帧内容 x 10..22、头部重心正好在格中心 16），
-    /// 没有朝左/朝右的版本。所以宠物站在碗侧面时，头永远对不着碗 ——
-    /// 我一度以为是站位坐标算错，调了几轮站位都不对，
-    /// 根因其实是「侧向进食帧不存在」。
+    /// 进食帧（`eatRow` = r4）是**背面俯视**姿态：尾巴在上、头在下，
+    /// 和 r2（朝后走）几乎一样。它没有侧向版本，也不是"低头"动作。
     ///
-    /// 站正后方之后，正面低头的姿态正好朝着前方的碗。
-    /// 多只时横向并排、稍微错开，各自低头吃自己那一侧。
+    /// 所以做不到"围着碗一圈各自侧头吃"。能做到的是：
+    /// 宠物背对镜头、**头压在碗上**，靠遮挡表达"埋进碗里"。
+    ///
+    /// ## 站位怎么算
+    ///
+    /// 关键是让**头**落在碗心，不是脚底或身体中心 ——
+    /// 拿身体中心对碗的话，头会在碗上方一截，看起来只是站在碗旁边
+    /// （前几轮就是这个问题）。
+    ///
+    /// 头在帧里距格底 `eatHeadFromBottom`（实测 8 源像素），
+    /// 所以节点中心 = 碗心 + (cell/2 - 8) × unit。
+    ///
+    /// 碗的位置由玩家自由拖动，所以这里一切都从 `bowl.position` 现算。
     private func gatherToBowl(_ bowl: SKNode, item: FurnitureItem) {
         touchPoint = nil
         bubbles?.uiIcon(0)
@@ -581,24 +596,31 @@ final class PetScene: SKScene {
                 < abs($1.node.position.x - bowl.position.x)
         }
 
-        // 碗所在的地板深度。宠物要站在它**后面**（depth 更大 = 更远）。
-        let bowlDepth = floor.depth(atY: bowlCenterY)
-        // 往后让一点，让碗露在宠物前面 —— 这也是"凑过去吃"的视觉证据
-        let standDepth = min(0.92, bowlDepth + 0.10)
+        // 碗的**实际屏幕矩形**。
+        //
+        // 不要从 `bowl.position` 手算 —— 它是底部锚点、且摆位时已经减过
+        // `petFootDrop`，再拿它加半个碗高会算出一个偏低一大截的"碗心"
+        // （实测宠物直接跑到碗下方去了）。
+        // 用 `calculateAccumulatedFrame()` 拿真实边界，最不容易错。
+        let bowlRect = bowl.calculateAccumulatedFrame()
+        let bowlCX = bowlRect.midX
+        // 碗口略高于几何中心 —— 食物画在碗的上半部
+        let bowlMouthY = bowlRect.minY + bowlRect.height * 0.62
 
         for (i, a) in queue.enumerated() where i < item.feedSlots {
             // 睡着的先叫醒 —— `step()` 会跳过 .sleeping，
-            // 不唤醒它永远走不到碗边（实测：一只吃上了，另一只在原地睡）
+            // 不唤醒它永远走不过来（实测：一只吃上了，另一只在原地睡）
             if isSleeping(a) {
                 a.nextDecisionAt = 0
                 a.applyIdlePose()
             }
 
-            // 横向并排：以碗为中心左右交替铺开。
-            // 间距按宠物身体宽度（约 24 源像素）算，避免互相重叠。
-            let unit = a.scale(atDepth: standDepth) * CGFloat(PetSpriteSheet.prescale)
-            let bodyW = 24 * unit
-            // 0 → 正中，1 → 右一位，2 → 左一位，3 → 右两位…
+            // 用碗所在深度的缩放 —— 宠物走到那里就是这个大小
+            let depthThere = floor.depth(atY: bowlMouthY)
+            let unit = a.scale(atDepth: depthThere) * CGFloat(PetSpriteSheet.prescale)
+
+            // 多只时横向铺开，间距略小于身体宽度 —— 挤在一起才像抢食
+            let bodyW = 22 * unit
             let step: CGFloat
             switch i {
             case 0: step = 0
@@ -606,11 +628,22 @@ final class PetScene: SKScene {
             case 2: step = -1
             default: step = CGFloat(i % 2 == 1 ? (i + 1) / 2 : -((i + 1) / 2))
             }
-            let centerX = bowl.position.x + step * bodyW * 0.85
 
-            let target = floor.clamp(CGPoint(x: centerX,
-                                             y: floor.y(atDepth: standDepth)))
+            // ⚠️ **走路目标必须是地板上的合法点。**
+            //
+            // 曾经直接把「头埋进碗」的位置当走路目标，但那个 y 在地板范围
+            // 之上，而 `moveToward` 里会 `floor.clamp(target)` ——
+            // 位置被夹回地板，距离永远大于到达阈值，**永远到不了**，
+            // 所以一直停在 `.walkingToBowl`，播的是走路动画而不是吃饭。
+            // 表现就是"宠物站在碗旁边用走路姿态"。
+            //
+            // 正解：走路用地板坐标，"埋进碗"是**到达后的视觉偏移**
+            // （见 `startChewing`）。两件事分开，不跟地板系统对抗。
+            let target = floor.clamp(CGPoint(x: bowlCX + step * bodyW,
+                                             y: bowlMouthY))
             a.behavior = .walkingToBowl(target: target)
+            // 记下头该埋到哪 —— 到达后由 startChewing 做视觉偏移
+            a.eatAnchor = CGPoint(x: bowlCX + step * bodyW, y: bowlMouthY)
             a.applyWalkAnimation()
         }
     }
@@ -618,15 +651,41 @@ final class PetScene: SKScene {
     /// 到碗边了，开始咀嚼。
     private func startChewing(_ a: PetActor) {
         a.behavior = .eating
+        // 盖在碗沿上 —— 头压住碗口才像"埋进碗里"。
+        // sortByDepth 每帧会重排 z，用这个标记让它把吃饭的宠物提到碗之上。
+        a.isEating = true
+
+        // **把头挪进碗里。**
+        //
+        // 走路目标只能是地板上的合法点（见 gatherToBowl 的注释），
+        // 所以"埋进碗"这一步在到达后用视觉偏移完成：
+        // 头在进食帧里距格底 `eatHeadFromBottom`（实测 8 源像素），
+        // 要让头落在碗心，节点中心就得在碗心上方 (cell/2 - 8) × unit。
+        if let anchor = a.eatAnchor {
+            let unit = a.sourcePixelUnit
+            let headOffset = (a.layoutCell / 2 - a.layoutEatHeadFromBottom) * unit
+            let dest = CGPoint(x: anchor.x, y: anchor.y + headOffset)
+            // 短促地凑过去，别硬切 —— 硬切会看起来像瞬移
+            a.node.run(.move(to: dest, duration: 0.18), withKey: "lean")
+        }
         // ⚠️ 这里**不设 facing**。进食帧固定取 `layout.eatRow`（第 4 行），
         // 那是正面低头的对称姿态，不看朝向 ——
         // 曾经在这里写 `a.facing = 碗在左还是右`，那行代码完全无效，
         // 却让人误以为"朝向已经处理过了"，掩盖了真正的问题
         // （素材没有侧向进食帧，所以必须站碗正后方）。
-        a.applyEatAnimation { [weak a] in
-            a?.behavior = .idle
-            a?.nextDecisionAt = 0
-            a?.applyIdlePose()
+        a.applyEatAnimation { [weak self, weak a] in
+            guard let a else { return }
+            a.isEating = false
+            a.eatAnchor = nil
+            // 吃完退回地板上的合法位置 —— 否则它会停在偏移过的 y 上，
+            // 下一次随机游走会从那个"悬空"的点开始算。
+            if let floor = self?.floor {
+                a.exactPosition = floor.clamp(a.node.position)
+                a.node.position = a.exactPosition
+            }
+            a.behavior = .idle
+            a.nextDecisionAt = 0
+            a.applyIdlePose()
         }
     }
 

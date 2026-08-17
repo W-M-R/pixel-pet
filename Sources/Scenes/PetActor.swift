@@ -54,6 +54,16 @@ final class PetActor {
         case sleeping
     }
     var behavior: Behavior = .idle
+
+    /// 是否正在吃饭。`PetScene.sortByDepth` 用它把宠物盖在碗之上 ——
+    /// 头压碗口才像"埋进碗里"，按脚底排序会让它躲到碗后面。
+    var isEating = false
+
+    /// 吃饭时头要埋到哪（碗心的屏幕坐标）。nil = 不在吃饭。
+    ///
+    /// 走路目标必须是地板上的合法点，而"头埋进碗"的位置可能在地板范围外，
+    /// 所以分两步：先走到地板上离碗最近的点，到了再按这个锚点做视觉偏移。
+    var eatAnchor: CGPoint?
     var facing: PetSpriteSheet.Facing = .right
     var nextDecisionAt: TimeInterval = 0
 
@@ -163,6 +173,7 @@ final class PetActor {
     var layoutMouthReach: CGFloat { sheetLayout.mouthReach }
     var layoutCell: CGFloat { sheetLayout.cell }
     var layoutFootPadding: CGFloat { sheetLayout.footPadding }
+    var layoutEatHeadFromBottom: CGFloat { sheetLayout.eatHeadFromBottom }
 
     var mouthX: CGFloat {
         let dir: CGFloat = (facing == .left) ? -1 : 1
