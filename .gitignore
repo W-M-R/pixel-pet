@@ -19,3 +19,7 @@ ASSET-PROVENANCE/**/*.zip
 # 留着规则免得哪天误加进库。确认不需要后可以手动删掉目录和这几行。
 tools/convert/
 Models/
+
+# Python 字节码（tools/ 下的脚本运行时产生）
+__pycache__/
+*.pyc
