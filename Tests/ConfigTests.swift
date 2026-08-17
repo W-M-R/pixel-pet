@@ -522,3 +522,133 @@ final class IconSourceTests: XCTestCase {
         XCTAssertEqual(img.size.height, PixelIcon.cell)
     }
 }
+
+/// 隐私声明必须与代码事实一致。
+///
+/// 「关于」页写着「完全离线，不发起任何网络请求」——
+/// 这是对用户的承诺，也可能被 App Store 审核核对。
+/// 万一将来有人加了网络请求（哪怕只是拉个更新检查），
+/// 那句话就变成谎话了。用测试守住它，而不是靠记性。
+final class PrivacyClaimTests: XCTestCase {
+
+    private var sourcesRoot: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources")
+    }
+
+    private func allCode() throws -> [(file: String, code: String)] {
+        let files = FileManager.default.enumerator(at: sourcesRoot,
+                                                  includingPropertiesForKeys: nil)!
+        var out: [(String, String)] = []
+        for case let url as URL in files where url.pathExtension == "swift" {
+            let src = try String(contentsOf: url, encoding: .utf8)
+            // 剥注释 —— 注释里提到 URLSession 是说明性文字，不是真的用了
+            let code = src.split(separator: "\n", omittingEmptySubsequences: false)
+                .map { line -> String in
+                    guard let i = line.range(of: "//") else { return String(line) }
+                    return String(line[line.startIndex..<i.lowerBound])
+                }
+                .joined(separator: "\n")
+            out.append((url.lastPathComponent, code))
+        }
+        return out
+    }
+
+    /// **不得有任何网络请求。**
+    func testNoNetworkingAPIs() throws {
+        let banned = ["URLSession", "URLRequest", "NWConnection",
+                      "CFSocket", "Network.framework"]
+        var offenders: [String] = []
+        for (file, code) in try allCode() {
+            for api in banned where code.contains(api) {
+                offenders.append("\(file): \(api)")
+            }
+        }
+        XCTAssertTrue(offenders.isEmpty,
+                      "「关于」页声明完全离线，但发现网络 API：\(offenders)")
+    }
+
+    /// 不得引入统计/广告 SDK
+    func testNoAnalyticsOrAds() throws {
+        let banned = ["FirebaseAnalytics", "GoogleMobileAds", "AppsFlyer",
+                      "Adjust", "Mixpanel", "Sentry", "Bugsnag",
+                      "ATTrackingManager", "ASIdentifierManager"]
+        var offenders: [String] = []
+        for (file, code) in try allCode() {
+            for sdk in banned where code.contains(sdk) {
+                offenders.append("\(file): \(sdk)")
+            }
+        }
+        XCTAssertTrue(offenders.isEmpty,
+                      "「关于」页声明无统计无广告，但发现：\(offenders)")
+    }
+
+    /// 不得读取通讯录/相册/定位这类敏感数据
+    func testNoSensitiveDataAccess() throws {
+        let banned = ["CNContactStore", "PHPhotoLibrary", "CLLocationManager",
+                      "HKHealthStore", "AVCaptureDevice", "EKEventStore"]
+        var offenders: [String] = []
+        for (file, code) in try allCode() {
+            for api in banned where code.contains(api) {
+                offenders.append("\(file): \(api)")
+            }
+        }
+        XCTAssertTrue(offenders.isEmpty, "发现敏感数据访问：\(offenders)")
+    }
+
+    /// 「关于」页的每条文案都要有译文
+    func testAboutTextIsLocalized() {
+        let keys = ["about.title", "about.app_name", "about.tagline",
+                    "about.what.title", "about.what.body",
+                    "about.how.title", "about.how.body",
+                    "about.privacy.title", "about.privacy.offline",
+                    "about.privacy.local", "about.privacy.no_account",
+                    "about.privacy.notify", "about.privacy.delete",
+                    "about.assets.title", "about.assets.body"]
+        for k in keys {
+            XCTAssertNotEqual(L(k), k, "\(k) 缺译文 —— 关于页会显示 key 本身")
+            XCTAssertFalse(L(k).isEmpty)
+        }
+    }
+}
+
+/// 提醒阈值。
+final class ReminderThresholdTests: XCTestCase {
+
+    /// 档位要包含「关闭」，且都在合理范围
+    func testOptionsAreSane() {
+        let opts = PetNotifications.Threshold.options
+        XCTAssertTrue(opts.contains(0), "要有关闭档")
+        for o in opts {
+            XCTAssertGreaterThanOrEqual(o, 0)
+            XCTAssertLessThanOrEqual(o, 0.5, "提醒线高于 50% 会太吵")
+        }
+        XCTAssertEqual(opts, opts.sorted(), "档位应升序，UI 直接按顺序渲染")
+    }
+
+    /// 默认值：饱食和心情开，清洁关（72h 周期，提醒会显得多余）
+    func testDefaultsAreReasonable() {
+        // 清掉可能残留的用户设置再读默认
+        for k in ["notifyThresholdSatiety", "notifyThresholdMood",
+                  "notifyThresholdHygiene"] {
+            UserDefaults.standard.removeObject(forKey: k)
+        }
+        XCTAssertEqual(PetNotifications.Threshold.satiety, 0.15, accuracy: 0.001)
+        XCTAssertEqual(PetNotifications.Threshold.mood, 0.20, accuracy: 0.001)
+        XCTAssertEqual(PetNotifications.Threshold.hygiene, 0, accuracy: 0.001,
+                       "清洁默认不提醒")
+    }
+
+    /// 存取能往返，且 0 表示关闭
+    func testPersistsAndZeroMeansOff() {
+        PetNotifications.Threshold.satiety = 0.3
+        XCTAssertEqual(PetNotifications.Threshold.satiety, 0.3, accuracy: 0.001)
+
+        PetNotifications.Threshold.satiety = 0
+        XCTAssertEqual(PetNotifications.Threshold.satiety, 0, accuracy: 0.001)
+
+        // 还原默认，别影响别的测试
+        UserDefaults.standard.removeObject(forKey: "notifyThresholdSatiety")
+    }
+}

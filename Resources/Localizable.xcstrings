@@ -33,6 +33,246 @@
         }
       }
     },
+    "about.app_name": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PixelPet"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PixelPet"
+          }
+        }
+      }
+    },
+    "about.assets.body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pet sprites are \"LPC Cats and Dogs\" by bluecarrot16 from OpenGameArt. Room and emote art is CC0. UI icons are original to this project."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "宠物精灵图来自 OpenGameArt 的「LPC Cats and Dogs」（作者 bluecarrot16），房间与表情素材为 CC0 授权，界面图标为本项目自绘。"
+          }
+        }
+      }
+    },
+    "about.assets.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assets"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "素材"
+          }
+        }
+      }
+    },
+    "about.how.body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stats change with real time — you don't need to keep the app open. When you return, coins are settled based on how well-fed and happy your pet was. Each pet has a daily earnings cap, so caring well matters more than checking often."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "状态按真实时间流逝，不需要 app 一直开着。回来时会结算这段时间的收益，收益取决于宠物的饱食和心情。每只宠物每天有收益上限，所以「照顾好」比「反复打开」更有用。"
+          }
+        }
+      }
+    },
+    "about.how.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "How it works"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "怎么玩"
+          }
+        }
+      }
+    },
+    "about.privacy.delete": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deleting the app deletes all data. No copies exist anywhere else."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除 app 即删除全部数据，没有任何副本留在别处。"
+          }
+        }
+      }
+    },
+    "about.privacy.local": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your pets, coins, and room layout are stored only on your device."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "宠物、金币、房间布局都只存在你的设备上。"
+          }
+        }
+      }
+    },
+    "about.privacy.no_account": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No account required. No personal data collected. No analytics, no ads."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不需要账号，不收集任何个人信息，没有统计和广告。"
+          }
+        }
+      }
+    },
+    "about.privacy.notify": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The only permission requested is notifications — off by default, used solely for pet status reminders."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "唯一会请求的权限是通知，默认关闭，只用于提醒宠物的状态。"
+          }
+        }
+      }
+    },
+    "about.privacy.offline": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fully offline — the app makes no network requests."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完全离线运行，app 不发起任何网络请求。"
+          }
+        }
+      }
+    },
+    "about.privacy.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隐私"
+          }
+        }
+      }
+    },
+    "about.tagline": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A pixel pet that lives in your phone"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一只住在你手机里的像素宠物"
+          }
+        }
+      }
+    },
+    "about.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "About"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关于"
+          }
+        }
+      }
+    },
+    "about.what.body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An offline pixel pet game. Feed, play, and bathe your pet as it grows through four life stages. The better you care for it, the more coins it earns while you're away — save up and you can adopt another."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一个离线的像素宠物养成小游戏。喂食、陪玩、洗澡，宠物会随时间长大，从幼年到老年共四个阶段。照顾得好，它在你离开时「看家」赚的金币更多，攒够了可以再收养一只。"
+          }
+        }
+      }
+    },
+    "about.what.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What it is"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这是什么"
+          }
+        }
+      }
+    },
     "achv.age_100": {
       "localizations": {
         "en": {
@@ -1825,6 +2065,38 @@
         }
       }
     },
+    "notify.dirty.body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Getting a bit dirty — a bath would help."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "身上有点脏，洗一洗会更开心。"
+          }
+        }
+      }
+    },
+    "notify.dirty.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ needs a bath"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 该洗澡了"
+          }
+        }
+      }
+    },
     "notify.hungry.body": {
       "localizations": {
         "en": {
@@ -2507,6 +2779,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "再过 %d 天进入下一阶段"
+          }
+        }
+      }
+    },
+    "settings.threshold.footer": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notifies you when a stat drops below the chosen level. Pick × to turn it off. Late-night reminders (23:00–07:00) are pushed to morning."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "状态低于所选比例时提醒。选「×」关闭该项。深夜（23:00–07:00）的提醒会推迟到早上。"
+          }
+        }
+      }
+    },
+    "settings.threshold.header": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reminder thresholds"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "提醒阈值"
+          }
+        }
+      }
+    },
+    "settings.threshold.off": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Off"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭"
           }
         }
       }

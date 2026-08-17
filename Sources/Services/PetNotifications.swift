@@ -13,11 +13,47 @@ enum PetNotifications {
 
     private static let hungryID = "pet.hungry"
     private static let moodID = "pet.mood"
+    private static let hygieneID = "pet.hygiene"
 
     /// 用户是否开启（默认关，避免一上来就弹系统授权框）
     static var isEnabled: Bool {
         get { UserDefaults.standard.bool(forKey: "notificationsEnabled") }
         set { UserDefaults.standard.set(newValue, forKey: "notificationsEnabled") }
+    }
+
+    // MARK: - 提醒阈值
+
+    /// 三维各自的提醒阈值（状态**低于**这个比例时提醒）。
+    ///
+    /// 曾经写死在 `reschedule` 里（饱食 0.85 周期处、心情 0.8 处），
+    /// 而且那两个数是「周期的百分比」不是「状态的百分比」——
+    /// 意思正好相反，读代码的人很容易搞错。
+    /// 现在统一成「剩余状态比例」，和设置页显示的数字一致。
+    enum Threshold {
+        /// 0 = 关闭该项提醒
+        static var satiety: Double {
+            get { read("notifyThresholdSatiety", default: 0.15) }
+            set { write("notifyThresholdSatiety", newValue) }
+        }
+        static var mood: Double {
+            get { read("notifyThresholdMood", default: 0.20) }
+            set { write("notifyThresholdMood", newValue) }
+        }
+        static var hygiene: Double {
+            get { read("notifyThresholdHygiene", default: 0.0) }   // 默认不提醒
+            set { write("notifyThresholdHygiene", newValue) }
+        }
+
+        /// 可选档位。0 表示关闭。
+        static let options: [Double] = [0, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5]
+
+        private static func read(_ key: String, default d: Double) -> Double {
+            let v = UserDefaults.standard.object(forKey: key) as? Double
+            return v ?? d
+        }
+        private static func write(_ key: String, _ v: Double) {
+            UserDefaults.standard.set(v, forKey: key)
+        }
     }
 
     /// 请求授权。返回是否获得许可。
@@ -36,36 +72,60 @@ enum PetNotifications {
 
     /// 根据当前状态重排通知。每次互动后调用。
     ///
-    /// 排两条：
-    /// - 饱食降到 15% 时提醒
-    /// - 心情降到 20% 时提醒
+    /// 三条上限（饱食/心情/清洁），阈值由用户在设置里调，
+    /// 设成 0 就不排那一条。
     ///
     /// 都用 `UNTimeIntervalNotificationTrigger` —— 因为触发时刻是从
     /// 时间戳算出来的相对秒数，不是固定钟点。
     static func reschedule(for pet: PetState, petName: String) {
         let center = UNUserNotificationCenter.current()
-        center.removePendingNotificationRequests(withIdentifiers: [hungryID, moodID])
+        center.removePendingNotificationRequests(
+            withIdentifiers: [hungryID, moodID, hygieneID])
         guard isEnabled else { return }
 
         let now = Date()
 
-        // 饱食：从 lastFedAt 起 hunger 周期的 85% 处提醒
-        let hungryAt = pet.lastFedAt.addingTimeInterval(
-            PetState.Decay.hunger(for: pet.stage) * 0.85)
-        schedule(id: hungryID,
-                 titleKey: "notify.hungry.title",
-                 bodyKey: "notify.hungry.body",
-                 petName: petName,
-                 fireAt: hungryAt, now: now)
+        // 状态线性衰减，所以「降到 x 比例」= 经过 (1-x) × 周期。
+        // 用剩余比例表达阈值，和设置页显示的数字一致。
+        func fireTime(from base: Date, cycle: TimeInterval, level: Double) -> Date {
+            base.addingTimeInterval(cycle * (1 - level))
+        }
 
-        // 心情：80% 处
-        let boredAt = pet.lastPlayedAt.addingTimeInterval(
-            PetState.Decay.mood(for: pet.breed) * 0.8)
-        schedule(id: moodID,
-                 titleKey: "notify.bored.title",
-                 bodyKey: "notify.bored.body",
-                 petName: petName,
-                 fireAt: boredAt, now: now)
+        let sat = Threshold.satiety
+        if sat > 0 {
+            schedule(id: hungryID,
+                     titleKey: "notify.hungry.title",
+                     bodyKey: "notify.hungry.body",
+                     petName: petName,
+                     fireAt: fireTime(from: pet.lastFedAt,
+                                      cycle: PetState.Decay.hunger(for: pet.stage),
+                                      level: sat),
+                     now: now)
+        }
+
+        let mood = Threshold.mood
+        if mood > 0 {
+            schedule(id: moodID,
+                     titleKey: "notify.bored.title",
+                     bodyKey: "notify.bored.body",
+                     petName: petName,
+                     fireAt: fireTime(from: pet.lastPlayedAt,
+                                      cycle: PetState.Decay.mood(for: pet.breed),
+                                      level: mood),
+                     now: now)
+        }
+
+        let hyg = Threshold.hygiene
+        if hyg > 0 {
+            schedule(id: hygieneID,
+                     titleKey: "notify.dirty.title",
+                     bodyKey: "notify.dirty.body",
+                     petName: petName,
+                     fireAt: fireTime(from: pet.lastCleanedAt,
+                                      cycle: PetState.Decay.hygiene(for: pet.breed),
+                                      level: hyg),
+                     now: now)
+        }
     }
 
     private static func schedule(id: String,
