@@ -794,3 +794,86 @@ final class PlaythroughTests: StoreTestCase {
         XCTAssertEqual(s.pets[0].name, "新名字")
     }
 }
+
+/// 调试工具本身也要可靠 —— 它是我验证其它一切的手段。
+@MainActor
+final class DebugToolTests: StoreTestCase {
+
+    /// **前进时间必须推进年龄。**
+    /// 曾经 `debugAge` 只推三个互动时间戳，不推 `bornAt` ——
+    /// 所以「前进一周」宠物不长大，阶段/额度/成就全都测不到。
+    func testAgeAdvancesBirthAndStage() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "T")
+        XCTAssertEqual(s.pet.ageInDays, 0)
+        XCTAssertEqual(s.pet.stage, .young)
+
+        s.debugAge(by: 8 * 86400)
+        XCTAssertEqual(s.pet.ageInDays, 8, "前进 8 天就该是 8 天龄")
+        XCTAssertEqual(s.pet.stage, .adult, "8 天该到成年")
+    }
+
+    /// 前进时间要推进 lastCollectedAt，否则离线收益永远是 0
+    func testAgeEnablesOfflineSettlement() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "T")
+        XCTAssertNil(s.settleRewards(), "刚开局不该有离线收益")
+
+        s.debugAge(by: 6 * 3600)
+        XCTAssertNotNil(s.settleRewards(), "前进 6 小时后该能结算")
+    }
+
+    /// 前进时间作用于**全部**宠物，不只选中那只
+    func testAgeAffectsAllPets() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "A")
+        var w = s.wallet
+        w.debugSetCoins(20000)
+        s.debugSet(wallet: w)
+        s.purchase(.dog)
+        XCTAssertEqual(s.pets.count, 2)
+
+        s.debugAge(by: 5 * 86400)
+        for p in s.pets {
+            XCTAssertEqual(p.ageInDays, 5, "\(p.breedID) 没被推进")
+        }
+    }
+
+    /// 发钱走账本，账目仍平且流水可查
+    func testAddCoinsGoesThroughLedger() {
+        let s = makeStore()
+        let before = s.wallet.coins
+        s.debugAddCoins(1000)
+        XCTAssertEqual(s.wallet.coins, before + 1000)
+        XCTAssertTrue(s.wallet.ledger.isBalanced)
+        XCTAssertEqual(s.wallet.ledger.recent.last?.reason, .debugGrant)
+    }
+
+    /// 调状态要真的改变读出来的值
+    func testSetStatsWorks() {
+        let s = makeStore()
+        s.debugSetStats(satiety: 0, mood: 0, hygiene: 0)
+        let now = Date()
+        XCTAssertLessThan(s.pet.satiety(at: now), 0.05)
+        XCTAssertLessThan(s.pet.mood(at: now), 0.05)
+
+        s.debugSetStats(satiety: 1, mood: 1, hygiene: 1)
+        XCTAssertGreaterThan(s.pet.satiety(at: Date()), 0.95)
+    }
+
+    /// 删宠物要留至少一只 —— 空数组会让 `pet` 崩
+    func testCannotRemoveLastPet() {
+        let s = makeStore()
+        XCTAssertEqual(s.pets.count, 1)
+        s.debugRemoveSelectedPet()
+        XCTAssertEqual(s.pets.count, 1, "最后一只不能删")
+
+        var w = s.wallet
+        w.debugSetCoins(20000)
+        s.debugSet(wallet: w)
+        s.purchase(.dog)
+        s.debugRemoveSelectedPet()
+        XCTAssertEqual(s.pets.count, 1)
+        XCTAssertEqual(s.pet.breedID, "cat", "删掉狗后应选中剩下的猫")
+    }
+}

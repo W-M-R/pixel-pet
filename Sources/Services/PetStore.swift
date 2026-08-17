@@ -422,10 +422,71 @@ final class PetStore {
         if let newWallet { wallet = newWallet }
     }
 
+    /// 把时间往前推，模拟放置一段时间。
+    ///
+    /// **作用于全部宠物**，不只选中那只 —— 否则养两只时会出现
+    /// 「一只饿透了另一只刚吃过」的假状态，看不出真实的多宠表现。
+    ///
+    /// `bornAt` 也要推：不推的话「前进一周」宠物不会长大，
+    /// 而年龄相关的东西（阶段、额度、成就）全都测不到。
+    /// `lastCollectedAt` 同理 —— 不推的话离线收益永远是 0。
     func debugAge(by seconds: TimeInterval) {
-        pet.lastFedAt = pet.lastFedAt.addingTimeInterval(-seconds)
-        pet.lastPlayedAt = pet.lastPlayedAt.addingTimeInterval(-seconds)
-        pet.lastCleanedAt = pet.lastCleanedAt.addingTimeInterval(-seconds)
+        for i in pets.indices {
+            pets[i].lastFedAt = pets[i].lastFedAt.addingTimeInterval(-seconds)
+            pets[i].lastPlayedAt = pets[i].lastPlayedAt.addingTimeInterval(-seconds)
+            pets[i].lastCleanedAt = pets[i].lastCleanedAt.addingTimeInterval(-seconds)
+            pets[i].bornAt = pets[i].bornAt.addingTimeInterval(-seconds)
+            pets[i].awakeUntil = nil          // 清掉「被叫醒」，否则不会犯困
+        }
+        wallet.lastCollectedAt = wallet.lastCollectedAt.addingTimeInterval(-seconds)
+        persist()
+        refresh()
+    }
+
+    /// 直接发钱。
+    ///
+    /// 走账本记一笔 `debugGrant` —— 所以账目仍然平，
+    /// 而且流水里看得见「这笔是调试加的」，
+    /// 不会再出现「为什么我有这么多金币」查不出来的情况。
+    func debugAddCoins(_ amount: Int) {
+        wallet.earn(amount, reason: .debugGrant, note: "debug +\(amount)")
+        persist()
+        refresh()
+    }
+
+    /// 把状态调到指定比例（0 = 空，1 = 满），作用于选中那只。
+    func debugSetStats(satiety: Double? = nil,
+                      mood: Double? = nil,
+                      hygiene: Double? = nil) {
+        let now = Date()
+        var p = pet
+        if let s = satiety {
+            p.lastFedAt = now.addingTimeInterval(
+                -PetState.Decay.hunger(for: p.stage) * (1 - s))
+        }
+        if let m = mood {
+            p.lastPlayedAt = now.addingTimeInterval(-PetState.Decay.mood * (1 - m))
+        }
+        if let h = hygiene {
+            p.lastCleanedAt = now.addingTimeInterval(-PetState.Decay.hygiene * (1 - h))
+        }
+        pet = p
+        persist()
+        refresh()
+    }
+
+    /// 清掉已领成就记录，让它们可以重新触发（验证成就文案/金额时用）。
+    func debugResetAchievements() {
+        wallet.claimedRewards = []
+        persist()
+        refresh()
+    }
+
+    /// 删掉选中的宠物。至少留一只 —— 空数组会让 `pet` 崩。
+    func debugRemoveSelectedPet() {
+        guard pets.count > 1 else { return }
+        pets.removeAll { $0.id == selectedPetID }
+        selectedPetID = pets[0].id
         persist()
         refresh()
     }

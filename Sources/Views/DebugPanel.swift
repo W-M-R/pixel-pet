@@ -23,28 +23,75 @@ struct DebugPanel: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("模拟时间流逝") {
+                Section {
                     Button("前进 1 小时") { store.debugAge(by: 3600) }
                     Button("前进 4 小时") { store.debugAge(by: 4 * 3600) }
-                    Button("前进 1 天")  { store.debugAge(by: 86400) }
+                    Button("前进 1 天")   { store.debugAge(by: 86400) }
+                    Button("前进 3 天")   { store.debugAge(by: 3 * 86400) }
+                    Button("前进 1 周")   { store.debugAge(by: 7 * 86400) }
+                    Button("前进 30 天")  { store.debugAge(by: 30 * 86400) }
+                } header: {
+                    Text("模拟时间流逝")
+                } footer: {
+                    Text("同时推进全部宠物的状态、年龄和上次结算时间。"
+                         + "回到主页会触发离线收益结算。")
+                }
+
+                Section {
+                    Button("+1000 金币")  { store.debugAddCoins(1000) }
+                    Button("+10000 金币") { store.debugAddCoins(10000) }
+                    Button("清空成就记录", role: .destructive) {
+                        store.debugResetAchievements()
+                    }
+                } header: {
+                    Text("金币与成就")
+                } footer: {
+                    Text("发钱走账本记 debugGrant，账目仍然平、流水里查得到。"
+                         + "清空成就后可以重新触发，用于验证文案和金额。")
+                }
+
+                Section {
+                    Button("饿透") { store.debugSetStats(satiety: 0) }
+                    Button("心情见底") { store.debugSetStats(mood: 0) }
+                    Button("脏透") { store.debugSetStats(hygiene: 0) }
+                    Button("三维拉满") {
+                        store.debugSetStats(satiety: 1, mood: 1, hygiene: 1)
+                    }
+                    Button("全部压到一半") {
+                        store.debugSetStats(satiety: 0.5, mood: 0.5, hygiene: 0.5)
+                    }
+                } header: {
+                    Text("状态（作用于选中那只）")
+                } footer: {
+                    Text("用于看不同状态下的台词、HUD 报警色、达成率。")
                 }
                 Section("宠物") {
-                    Picker("品种", selection: Binding(
-                        get: { store.pet.breedID },
-                        set: { store.choose(breedID: $0, colorIndex: store.pet.colorIndex) }
+                    // 选中哪只。品种和毛色不能在这里改 ——
+                    // 毛色购买时就定死了，改它会和玩法规则矛盾。
+                    Picker("选中", selection: Binding(
+                        get: { store.selectedPetID },
+                        set: { store.select(petID: $0) }
                     )) {
-                        ForEach(PetBreed.all) { b in
-                            Text(verbatim: L(b.nameKey)).tag(b.id)
+                        ForEach(store.pets) { p in
+                            Text(verbatim: (p.name.isEmpty ? L(p.breed.nameKey) : p.name)
+                                 + "（\(L(p.breed.nameKey))）").tag(p.id)
                         }
                     }
-                    Picker("毛色", selection: Binding(
-                        get: { store.pet.colorIndex },
-                        set: { store.choose(breedID: store.pet.breedID, colorIndex: $0) }
-                    )) {
-                        ForEach(0..<store.pet.breed.colorCount, id: \.self) { i in
-                            Text("毛色 \(i + 1)").tag(i)
-                        }
+                    LabeledContent("共养了") {
+                        Text(verbatim: "\(store.pets.count) 只")
                     }
+                    Button("白送一只狗") {
+                        store.debugAddCoins(PetBreed.dog.price)
+                        store.purchase(.dog, colorIndex: 1)
+                    }
+                    Button("白送一只猫") {
+                        store.debugAddCoins(PetBreed.cat.price)
+                        store.purchase(.cat, colorIndex: 2)
+                    }
+                    Button("删掉选中那只", role: .destructive) {
+                        store.debugRemoveSelectedPet()
+                    }
+                    .disabled(store.pets.count < 2)
                     Picker("阶段(调试)", selection: Binding(
                         get: { store.pet.stage },
                         set: { store.debugSetStage($0) }
