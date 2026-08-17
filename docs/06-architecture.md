@@ -98,6 +98,7 @@ public，是全方案的一半成本、80% 的实际收益）。上面修循环�
 | `FoodItem` | 四档食物 + 按量计价 | `all` 加一条 + `PixelIcon` 加 case |
 | `PetBreed` | 品种注册表（属性、经济、布局引用） | `all` 加一条 + 跑素材脚本 |
 | `PetSheetLayout` | **帧布局 per-breed**：格尺寸、毛色数、走路帧序、行语义、footPadding | 加一个 `static let`，不改渲染代码 |
+| `PetActor` | **一只宠物在场景里的全部表现**：节点、影子、食盆、朝向、行为状态机 | 不用改 —— 场景按存档 diff 自动增删 |
 | `PetStage` | 生命阶段的全部参数（额度、周期、体型、sheet 后缀） | 四档写死，加档要同时改帧派生脚本 |
 | `StateThreshold` | 「多饿才算饿」原来散在 4 处，其中中英文 prompt 各一份必须手动同步 | 改一处 |
 | `Pixel` + `PixelPanel` / `PixelBar` | UI 的网格、配色、字号、组件 | 用 token，不写字面量 |
@@ -263,7 +264,7 @@ public，是全方案的一半成本、80% 的实际收益）。上面修循环�
 
 ### 仍不可测的部分
 
-- `PetScene`（818 行）—— 需要 `SKView` 生命周期
+- `PetScene`（734 行）—— 需要 `SKView` 生命周期
 - 4 个 View 文件 —— SwiftUI 视图
 - `PetState.ageInDays` 硬调 `Date()`，所以 `stage` 不可控 ——
   经济测试只能测幼年期

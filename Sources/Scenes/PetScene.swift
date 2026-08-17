@@ -19,48 +19,34 @@ final class PetScene: SKScene {
     private let walkSpeed: CGFloat = 34      // pt/秒
     private let followSpeed: CGFloat = 82    // 追手指时快一些
 
-    /// 宠物的**精确**位置（未吸附）。
-    ///
-    /// ⚠️ 不能直接把吸附后的值写回 `pet.position` 当作累加基准：
-    /// 120fps 下最远处每帧只走 0.22pt，小于 1 物理像素（0.33pt），
-    /// 吸附会把位移抹成 0 —— 宠物原地不动。
-    /// 所以精确位置在这里累加，`pet.position` 只承载显示用的吸附值。
-    private var exactPosition: CGPoint = .zero
 
     // MARK: - 状态
 
-    private var sheet: SKTexture?
-    private var sleepSheet: SKTexture?
     private var roomSheet: SKTexture?
     private var emoteSheet: SKTexture?
     private var iconSheet: SKTexture?
-    private var pet: SKSpriteNode!
-    private var shadow: SKShapeNode!
+    /// 景里的全部宠物。每只自己持有节点、影子、行为状态
+    /// （见 `PetActor`）—— 共用一份状态的话，一只走路另一只会跟着走。
+    private var actors: [PetActor] = []
+
+    /// 当前选中那只的 id。三个互动按钮作用于它，气泡也挂在它头上。
+    private var selectedID: String?
+
+    /// 最后一次 `sync` 收到的存档快照。
+    ///
+    /// **必须留一份。** `buildScene()` 会清空 `actors`（尺寸变化要重排家具），
+    /// 而 UI 层只在数据变化时才 `sync` —— 两者时序不保证：
+    /// 首次 `didMove` 时场景还没尺寸，`sync` 直接返回，
+    /// 之后 `buildScene` 建好房间却没有宠物可建，屏幕上就一只都没有。
+    /// 存快照让 `buildScene` 能自己重放。
+    private var lastPets: [PetState] = []
+
+    private var selected: PetActor? {
+        actors.first { $0.petID == selectedID } ?? actors.first
+    }
     /// 气泡层。实现在 BubbleLayer —— 它通过 anchor 闭包取位置，
     /// 不需要知道宠物是什么、有没有换过、当前缩放多少。
     private var bubbles: BubbleLayer?
-    private var foodNode: SKNode?
-
-    private var colorIndex: Int = 0
-    private var breed: PetBreed = .cat
-
-    /// 当前品种的精灵表布局。帧尺寸、毛色数、走路帧序、行语义都在里面。
-    /// 注意别和 `layout`（房间家具布局）混了。
-    private var sheetLayout: PetSheetLayout { breed.layout }
-    private var stage: PetStage = .adult
-
-    /// 宠物当前行为。和 PetState 的「需求」分开——需求是数据，行为是表现。
-    private enum Behavior {
-        case idle
-        case wandering(target: CGPoint)
-        case following
-        case eating
-        case startled
-        case sleeping
-    }
-    private var behavior: Behavior = .idle
-    private var facing: PetSpriteSheet.Facing = .right
-    private var nextDecisionAt: TimeInterval = 0
     private var lastUpdate: TimeInterval = 0
 
     private var touchPoint: CGPoint?
@@ -112,6 +98,9 @@ final class PetScene: SKScene {
 
     var onPetTouched: (() -> Void)?
 
+    /// 点中某只时回调，让 UI 层同步选中状态（store 才是真相源）。
+    var onPetSelected: ((String) -> Void)?
+
     // MARK: - 生命周期
 
     override func didMove(to view: SKView) {
@@ -138,92 +127,86 @@ final class PetScene: SKScene {
     }
 
     /// 配置宠物外观。阶段变化会换 sheet（幼年/成长/老年是程序化派生的）。
-    func configure(breed: PetBreed, colorIndex: Int, stage: PetStage) {
-        let changed = breed.id != self.breed.id
-            || colorIndex != self.colorIndex
-            || stage != self.stage
-            || pet == nil
-        guard changed else { return }
-        self.breed = breed
-        self.colorIndex = colorIndex
-        self.stage = stage
-        loadSheets()
-        guard pet != nil else { return }
+    /// 按存档同步场景里的宠物。
+    ///
+    /// 增删改都在这里：新养的加进来、删掉的移走、外观变了重贴图。
+    /// **不重建整个场景** —— 重建会让所有宠物位置归零、动画重启。
+    func sync(pets: [PetState], selectedID: String) {
+        self.selectedID = selectedID
+        self.lastPets = pets
+        guard size.width > 1 else { return }
 
-        // **按当前行为重新贴图，不能一律播走路动画。**
-        //
-        // 曾经这里无条件调 `applyWalkAnimation()`。宠物站着不动时
-        // （`.idle`，也是大多数时候）走路动画会被 idle 的单帧贴图盖掉 ——
-        // 而 `update()` 的 `.idle` 分支并不重设贴图，
-        // 所以**换毛色后画面纹丝不动**，看起来像「毛色只能选一次」。
-        // 睡觉时同理，得重贴睡姿帧而不是站起来走。
-        switch behavior {
-        case .sleeping:
-            applySleepPose()
-        case .idle, .startled:
-            applyIdlePose()
-        case .wandering, .following:
-            applyWalkAnimation()
-        case .eating:
-            // 咀嚼动画有完成回调驱动状态退出，中途换帧会打断它。
-            // 吃完自然会回 idle 并重贴，这里不动。
-            break
+        // 移走已经不存在的
+        let liveIDs = Set(pets.map(\.id))
+        for a in actors where !liveIDs.contains(a.petID) {
+            a.removeFromScene()
+        }
+        actors.removeAll { !liveIDs.contains($0.petID) }
+
+        for (index, p) in pets.enumerated() {
+            if let a = actors.first(where: { $0.petID == p.id }) {
+                // 已有：只在外观真的变了时重贴图
+                if a.updateAppearance(breed: p.breed, colorIndex: p.colorIndex,
+                                      stage: p.stage) {
+                    let d = floor.depth(atY: a.exactPosition.y)
+                    a.applyDepthScale(depth: d)
+                    a.reapplyCurrentPose(depth: d)
+                }
+            } else {
+                actors.append(spawn(p, index: index, total: pets.count))
+            }
         }
     }
 
-    /// 成年用源图，其余阶段用 tools/make_stages.py 生成的派生 sheet。
-    /// 派生 sheet 缺失时回退源图，保证不会白屏。
-    private func loadSheets() {
-        sheet = PetSpriteSheet.loadSheet(named: breed.sheetName(for: stage))
-            ?? PetSpriteSheet.loadSheet(named: breed.sheetName)
-        sleepSheet = PetSpriteSheet.loadSheet(named: breed.sleepSheetName)
+    /// 造一只新 actor 并摆到场上。
+    ///
+    /// 横向按序号错开，避免多只叠在一起 —— 之后它们各自随机游走，
+    /// 初始位置只需要不重叠。
+    private func spawn(_ p: PetState, index: Int, total: Int) -> PetActor {
+        let a = PetActor(petID: p.id, breed: p.breed, colorIndex: p.colorIndex,
+                         stage: p.stage, pixelScale: pixelScale)
+        let slots = max(total, 1) + 1
+        let x = size.width * CGFloat(index + 1) / CGFloat(slots)
+        let depth = 0.35 + CGFloat(index % 2) * 0.15   // 前后也错开一点
+        a.exactPosition = floor.clamp(CGPoint(x: x, y: floor.y(atDepth: depth)))
+        a.node.position = a.exactPosition
+        a.attach(to: self)
+        a.applyDepthScale(depth: floor.depth(atY: a.exactPosition.y))
+        a.applyWalkAnimation()
+        return a
     }
 
     private func buildScene() {
         removeAllChildren()
         guard size.width > 1 else { return }
 
-        loadSheets()
         roomSheet = RoomSpriteSheet.loadSheet(named: "house_objects")
         emoteSheet = RoomSpriteSheet.loadSheet(named: "emotes")
         iconSheet = RoomSpriteSheet.loadSheet(named: "icons")
 
         buildRoom()
 
-        // 影子：一个扁椭圆，给宠物一点重量感
-        shadow = SKShapeNode(ellipseOf: CGSize(width: 44, height: 12))
-        shadow.fillColor = SKColor(white: 0, alpha: 0.18)
-        shadow.strokeColor = .clear
-        shadow.zPosition = 9
-        addChild(shadow)
+        // 宠物由 sync(pets:selectedID:) 建 —— 场景不知道有几只，
+        // 那是存档的事。这里只搭房间，然后用快照重放。
+        actors.removeAll()
 
-        let firstFrame = sheet.map {
-            PetSpriteSheet.texture(from: $0, row: 0, column: 0,
-                                   colorIndex: colorIndex, layout: sheetLayout)
-        }
-        pet = SKSpriteNode(texture: firstFrame)
-        pet.texture?.filteringMode = .nearest
-        pet.setScale(pixelScale * stage.bodyScale / CGFloat(PetSpriteSheet.prescale))
-        exactPosition = floor.clamp(CGPoint(x: size.width / 2, y: floor.y(atDepth: 0.35)))
-        pet.position = exactPosition
-        pet.zPosition = 10
-        addChild(pet)
-
-        applyWalkAnimation()
-        syncShadow()
-
-        // anchor 用闭包而非直接传节点 —— 宠物会换 sheet、换缩放，
-        // 闭包保证每帧取到的都是当前值
+        // anchor 用闭包而非直接传节点：宠物会换 sheet、换缩放，
+        // 而且**选中的是哪只会变** —— 闭包保证每帧取到当前那只的位置。
         bubbles = BubbleLayer(
             parent: self,
             unit: pixelScale,
             emoteSheet: emoteSheet,
             iconSheet: iconSheet,
             anchor: { [weak self] in
-                guard let self, self.pet != nil else { return .zero }
-                return CGPoint(x: self.pet.position.x, y: self.petFeetY)
+                guard let a = self?.selected else { return .zero }
+                return CGPoint(x: a.node.position.x, y: a.feetY)
             },
             sceneWidth: { [weak self] in self?.size.width ?? 0 })
+
+        // 重放快照 —— 见 lastPets 的注释
+        if !lastPets.isEmpty {
+            sync(pets: lastPets, selectedID: selectedID ?? lastPets[0].id)
+        }
     }
 
     override func didChangeSize(_ oldSize: CGSize) {
@@ -285,164 +268,90 @@ final class PetScene: SKScene {
 
     // MARK: - 动画
 
-    private func applyWalkAnimation() {
-        guard let sheet, let pet else { return }
-        let frames = PetSpriteSheet.frames(from: sheet,
-                                           action: .walk(facing),
-                                           colorIndex: colorIndex,
-                                           layout: sheetLayout)
-        guard !frames.isEmpty else { return }
-        pet.removeAction(forKey: "anim")
-        let anim = SKAction.animate(with: frames,
-                                    timePerFrame: PetSpriteSheet.Action.walk(facing).timePerFrame,
-                                    resize: false,
-                                    restore: false)
-        pet.run(.repeatForever(anim), withKey: "anim")
-    }
-
-    private func applyEatAnimation(then completion: @escaping () -> Void) {
-        guard let sheet, let pet else { return }
-        let frames = PetSpriteSheet.frames(from: sheet, action: .eat,
-                                           colorIndex: colorIndex,
-                                           layout: sheetLayout)
-        guard !frames.isEmpty else { completion(); return }
-        pet.removeAction(forKey: "anim")
-        let chew = SKAction.animate(with: frames,
-                                    timePerFrame: PetSpriteSheet.Action.eat.timePerFrame,
-                                    resize: false,
-                                    restore: false)
-        pet.run(.sequence([.repeat(chew, count: 4), .run(completion)]), withKey: "anim")
-    }
-
-    /// 睡觉姿态。主 sheet 里确认没有 sleep 帧（r4 是咀嚼），
-    /// 所以用自绘的趴卧 sheet（tools/make_sleep.py 生成，调色板取自主 sheet）。
-    /// 若自绘 sheet 缺失则回退到「侧视帧压扁 + 呼吸缩放」。
-    private func applySleepPose() {
-        guard let pet else { return }
-        pet.removeAction(forKey: "anim")
-        applyDepthScale()
-
-        let frames = sleepSheet.map {
-            PetSpriteSheet.sleepFrames(from: $0, colorIndex: colorIndex,
-                                       layout: sheetLayout)
-        } ?? []
-
-        if frames.count >= 2 {
-            pet.texture = frames[0]
-            pet.texture?.filteringMode = .nearest
-            // 呼吸节奏放慢，2.2s 一次起伏
-            let breathe = SKAction.animate(with: frames,
-                                           timePerFrame: 1.1,
-                                           resize: false,
-                                           restore: false)
-            pet.run(.repeatForever(breathe), withKey: "anim")
-        } else if let sheet {
-            // 回退方案
-            pet.texture = PetSpriteSheet.texture(
-                from: sheet,
-                row: PetSpriteSheet.Facing.right.row(in: sheetLayout),
-                column: 0,
-                colorIndex: colorIndex,
-                layout: sheetLayout)
-            pet.texture?.filteringMode = .nearest
-            let s0 = currentPetScale
-            pet.yScale = s0 * 0.82
-            pet.xScale = s0 * 1.04
-            let breathe = SKAction.sequence([
-                .scaleY(to: s0 * 0.86, duration: 1.4),
-                .scaleY(to: s0 * 0.82, duration: 1.4)
-            ])
-            breathe.timingMode = .easeInEaseOut
-            pet.run(.repeatForever(breathe), withKey: "anim")
-        }
-    }
-
-    /// 站住时的姿态。
-    ///
-    /// 用第 4 格 —— 它是坐/趴姿，正是宠物停下来该有的样子。
-    /// （早先误把它当走路帧塞进循环，导致走路时每周期「抽」一下趴下。）
-    ///
-    /// ⚠️ cat 的 r1/r2 第 4 格是空白，所以正/背向时回退到走路第 0 帧。
-    private func applyIdlePose() {
-        guard let sheet, let pet else { return }
-        pet.removeAction(forKey: "anim")
-        // ⚠️ cat 的 r1/r2 第 4 格是空白，所以正/背向时回退到走路第 0 帧。
-        // 没有专门坐姿列的布局（idleColumn == nil）同样回退。
-        let sideways = (facing == .right || facing == .left)
-        let column = (sideways ? sheetLayout.idleColumn : nil) ?? 0
-        pet.texture = PetSpriteSheet.texture(from: sheet,
-                                             row: facing.row(in: sheetLayout),
-                                             column: column,
-                                             colorIndex: colorIndex,
-                                             layout: sheetLayout)
-        pet.texture?.filteringMode = .nearest
-        // 从睡姿回来要复位缩放，并保留当前深度的透视缩放
-        applyDepthScale()
-    }
-
-    // MARK: - 行为驱动
-
     override func update(_ currentTime: TimeInterval) {
-        guard pet != nil else { return }
+        guard !actors.isEmpty else { return }
         let dt = lastUpdate == 0 ? 0 : min(currentTime - lastUpdate, 0.1)
         lastUpdate = currentTime
 
+        // **每只独立驱动。** 共用一份 behavior 的话，
+        // 一只决定走路，另一只会跟着走。
+        for a in actors {
+            step(a, at: currentTime, dt: dt)
+        }
+        bubbles?.sync()
+    }
 
-        if let touchPoint, !isSleeping {
-            behavior = .following
-            moveToward(touchPoint, speed: followSpeed, dt: dt)
+    /// 推进一只宠物一帧。
+    ///
+    /// 只有**选中那只**会追手指 —— 全都追的话点一下屏幕所有宠物一起挤过来，
+    /// 而且分不清在跟谁互动。
+    private func step(_ a: PetActor, at time: TimeInterval, dt: TimeInterval) {
+        let isSelected = (a.petID == selected?.petID)
+
+        if let touchPoint, isSelected, !isSleeping(a) {
+            a.behavior = .following
+            moveToward(a, target: touchPoint, speed: followSpeed, dt: dt)
         } else {
-            switch behavior {
+            switch a.behavior {
             case .following:
-                behavior = .idle
-                nextDecisionAt = currentTime + 0.4
+                a.behavior = .idle
+                a.nextDecisionAt = time + 0.4
             case .idle:
-                if currentTime > nextDecisionAt { decideNextMove(at: currentTime) }
+                if time > a.nextDecisionAt { decideNextMove(a, at: time) }
             case .wandering(let target):
-                if moveToward(target, speed: walkSpeed, dt: dt) {
-                    behavior = .idle
-                    applyIdlePose()
-                    nextDecisionAt = currentTime + .random(in: 1.2...3.5)
+                if moveToward(a, target: target, speed: walkSpeed, dt: dt) {
+                    a.behavior = .idle
+                    a.applyIdlePose()
+                    a.nextDecisionAt = time + .random(in: 1.2...3.5)
                 }
             case .eating, .startled, .sleeping:
                 break
             }
         }
-        syncShadow()
-        bubbles?.sync()
+        syncShadow(a)
     }
 
-    /// 由 UI 层按 PetState.energy 驱动。困了就趴下，休息够了自己起来。
+    /// 由 UI 层按 `PetState.isDrowsy` 驱动。困了就趴下，休息够了自己起来。
+    ///
+    /// 作用于全部宠物 —— 作息是按真实时间算的，不分选中与否。
     func setSleeping(_ sleeping: Bool) {
+        for a in actors {
+            if sleeping {
+                guard !isSleeping(a) else { continue }
+                a.behavior = .sleeping
+                a.applySleepPose(depth: depth(of: a))
+            } else {
+                guard isSleeping(a) else { continue }
+                a.behavior = .idle
+                a.nextDecisionAt = 0
+                a.applyIdlePose()
+            }
+        }
         if sleeping {
-            guard !isSleeping else { return }
-            behavior = .sleeping
             touchPoint = nil
-            applySleepPose()
             showEmote(.sleep)
-        } else {
-            guard isSleeping else { return }
-            behavior = .idle
-            nextDecisionAt = 0
-            applyIdlePose()
         }
     }
 
-    private var isSleeping: Bool {
-        if case .sleeping = behavior { return true }
+    private func isSleeping(_ a: PetActor) -> Bool {
+        if case .sleeping = a.behavior { return true }
         return false
     }
 
-    private func decideNextMove(at time: TimeInterval) {
+    private func depth(of a: PetActor) -> CGFloat {
+        floor.depth(atY: a.exactPosition.y)
+    }
+
+    private func decideNextMove(_ a: PetActor, at time: TimeInterval) {
         // 70% 概率走一段，30% 继续待着
         guard Double.random(in: 0...1) < 0.7 else {
-            nextDecisionAt = time + .random(in: 1...2.5)
+            a.nextDecisionAt = time + .random(in: 1...2.5)
             return
         }
         let target = floor.randomPoint()
-        behavior = .wandering(target: target)
-        updateFacing(toward: target)
-        applyWalkAnimation()
+        a.behavior = .wandering(target: target)
+        updateFacing(a, toward: target)
+        a.applyWalkAnimation()
     }
 
     /// 朝目标走一步。返回 true 表示已到达。
@@ -450,26 +359,28 @@ final class PetScene: SKScene {
     /// 二维移动：x 和 y 同时推进。速度按 depth 缩放 —— 远处的宠物
     /// 视觉上更小，如果用同样的 pt/秒 会显得走得飞快。
     @discardableResult
-    private func moveToward(_ target: CGPoint, speed: CGFloat, dt: TimeInterval) -> Bool {
-        let dx = target.x - exactPosition.x
-        let dy = target.y - exactPosition.y
+    private func moveToward(_ a: PetActor, target: CGPoint,
+                            speed: CGFloat, dt: TimeInterval) -> Bool {
+        let dx = target.x - a.exactPosition.x
+        let dy = target.y - a.exactPosition.y
         let dist = sqrt(dx * dx + dy * dy)
 
         // 到达阈值也按 depth 缩放，远处判定更宽松
-        let d = floor.depth(atY: exactPosition.y)
+        let d = depth(of: a)
         let arriveThreshold = 4 * floor.scaleFactor(atDepth: d)
         if dist < arriveThreshold { return true }
 
         let step = speed * floor.scaleFactor(atDepth: d) * CGFloat(dt)
         if step >= dist {
-            exactPosition = floor.clamp(target)
+            a.exactPosition = floor.clamp(target)
         } else {
-            exactPosition = floor.clamp(CGPoint(x: exactPosition.x + dx / dist * step,
-                                                y: exactPosition.y + dy / dist * step))
+            a.exactPosition = floor.clamp(
+                CGPoint(x: a.exactPosition.x + dx / dist * step,
+                        y: a.exactPosition.y + dy / dist * step))
         }
-        pet.position = exactPosition
-        updateFacing(toward: target)
-        applyDepthScale()
+        a.node.position = a.exactPosition
+        updateFacing(a, toward: target)
+        applyDepthScale(a)
         return false
     }
 
@@ -478,9 +389,9 @@ final class PetScene: SKScene {
     /// 四方向的选择规则：谁的位移分量更大就用那个方向。
     /// 加了 1.35 的横向偏好系数 —— 斜着走时优先显示侧视，
     /// 因为侧视帧的动作辨识度明显高于正面/背面（正背视只有 13px 宽）。
-    private func updateFacing(toward target: CGPoint) {
-        let dx = target.x - exactPosition.x
-        let dy = target.y - exactPosition.y
+    private func updateFacing(_ a: PetActor, toward target: CGPoint) {
+        let dx = target.x - a.exactPosition.x
+        let dy = target.y - a.exactPosition.y
 
         let newFacing: PetSpriteSheet.Facing
         if abs(dx) * 1.35 >= abs(dy) {
@@ -490,102 +401,64 @@ final class PetScene: SKScene {
             newFacing = dy > 0 ? .back : .front
         }
 
-        guard newFacing != facing else { return }
-        facing = newFacing
-        applyWalkAnimation()
+        guard newFacing != a.facing else { return }
+        a.facing = newFacing
+        a.applyWalkAnimation()
     }
 
-    /// 当前深度下宠物应有的基准缩放。所有动画都要以它为基准，
-    /// 不能写死 pixelScale —— 否则宠物在远处做动作会突然放大。
+    /// 按当前 depth 调整缩放，制造远近感。
     ///
-    /// **连续值，不做量化。** 纹理已用 nearest 预放大 `prescale` 倍
-    /// （见 `PetSpriteSheet.prescale`），所以这里要除掉那个倍数，
-    /// 再由 linear 采样平滑地缩到目标尺寸 —— 这样 texel 边界不会
-    /// 随缩放逐帧重新分配，走动就不闪了。
-    private var currentPetScale: CGFloat {
-        let depth = pet == nil ? 0 : floor.depth(atY: exactPosition.y)
-        let target = floor.petScale(pixelScale: pixelScale,
-                                    bodyScale: stage.bodyScale,
-                                    depth: depth)
-        return target / CGFloat(PetSpriteSheet.prescale)
+    /// **连续值，不做量化。** 纹理已用 nearest 预放大 `prescale` 倍，
+    /// 所以 `PetActor.scale(atDepth:)` 里除掉了那个倍数，
+    /// 再由 linear 采样平滑缩到目标尺寸 —— texel 边界不会随缩放
+    /// 逐帧重新分配，走动就不闪了。
+    private func applyDepthScale(_ a: PetActor) {
+        guard !isSleeping(a) else { return }
+        a.applyDepthScale(depth: depth(of: a))
     }
 
-    /// 按当前 depth 调整宠物缩放，制造远近感。
-    private func applyDepthScale() {
-        guard let pet, !isSleeping else { return }
-        pet.setScale(currentPetScale)
-    }
-
-    private func syncShadow() {
-        guard let pet, let shadow else { return }
-        // 影子贴在脚底，略微下沉 1 源像素，看起来像压在地上
-        let d = floor.depth(atY: pet.position.y)
+    private func syncShadow(_ a: PetActor) {
+        let d = floor.depth(atY: a.node.position.y)
         let f = floor.scaleFactor(atDepth: d)
-        shadow.position = CGPoint(x: pet.position.x, y: petFeetY - pixelScale * f)
-        shadow.setScale(f)
+        // 影子贴在脚底，略微下沉 1 源像素，看起来像压在地上
+        a.syncShadow(depth: d, footInset: f)
+        a.shadow.setScale(f)
         // 远处影子淡一些
-        shadow.alpha = 0.18 * (0.7 + 0.3 * (1 - d))
+        a.shadow.alpha = 0.18 * (0.7 + 0.3 * (1 - d))
     }
 
     // MARK: - 外部触发
 
+    /// 喂食。作用于**选中那只** —— 三个互动按钮都是。
     func triggerEat() {
-        guard pet != nil else { return }
-        behavior = .eating
+        guard let a = selected else { return }
+        a.behavior = .eating
         touchPoint = nil
-        // 睡姿改过 yScale，先复位再放盆，否则 petFeetY 算出来是压扁后的位置
-        pet.removeAction(forKey: "anim")
-        applyDepthScale()
-        dropFoodBowl()
+        // 睡姿改过 yScale，先复位再放盆，否则 feetY 算出来是压扁后的位置
+        a.node.removeAction(forKey: "anim")
+        a.applyDepthScale(depth: depth(of: a))
+        dropFoodBowl(for: a)
         // 像素肉图标（icons.png 第 0 格）。原来是 🍖 emoji ——
         // emoji 字形随 iOS 版本变，缺字体时会渲染成问号。
         bubbles?.uiIcon(0)
-        applyEatAnimation { [weak self] in
-            guard let self else { return }
-            self.foodNode?.run(.sequence([.fadeOut(withDuration: 0.2), .removeFromParent()]))
-            self.foodNode = nil
-            self.behavior = .idle
-            self.nextDecisionAt = 0
-            self.applyIdlePose()
+        a.applyEatAnimation { [weak self, weak a] in
+            guard let self, let a else { return }
+            a.clearFoodBowl()
+            a.behavior = .idle
+            a.nextDecisionAt = 0
+            a.applyIdlePose()
         }
-    }
-
-    /// 宠物脚底的 y 坐标。
-    ///
-    /// 不能直接用 `pet.position.y` —— 那是节点中心。也不能硬编码偏移，
-    /// 因为偏移量随 pixelScale 变（曾经写死 -24，pixelScale 从 5 改到 4
-    /// 之后食盆就跑到宠物头上去了）。
-    ///
-    /// 帧是 32×32，而猫的内容底边在第 26 行，即底部有 5 行空白。
-    /// 所以脚底 = 中心 - (16 - 5) × pixelScale。
-    private var petFeetY: CGFloat {
-        let frameH = sheetLayout.cell
-        // 按品种取 —— 原来写死 5（按猫实测），而狗的内容底边在 y=28，
-        // 所以狗的影子和食盆一直偏 2 源像素
-        let bottomPadding = sheetLayout.footPadding
-        // ⚠️ 纹理已预放大 prescale 倍，pet.yScale 相应变小了同样倍数。
-        // 「1 源像素在屏幕上占多少 pt」= yScale × prescale。
-        return pet.position.y
-            - (frameH / 2 - bottomPadding) * sourcePixelUnit
-    }
-
-    /// 1 个**源图**像素当前在屏幕上占多少 pt。
-    ///
-    /// 纹理预放大后 `pet.xScale` 不再等于「源像素 → pt」的倍数，
-    /// 差了 `prescale`。所有拿源图坐标算屏幕位置的地方都要用这个。
-    private var sourcePixelUnit: CGFloat {
-        pet.yScale * CGFloat(PetSpriteSheet.prescale)
     }
 
     /// 喂食时在宠物脚边放一个食盆。
     /// 素材包里没有食盆（而且那套是俯视的），所以手绘一个侧视的，
     /// 尺寸取 pixelScale 整数倍，与宠物同像素密度。
-    private func dropFoodBowl() {
-        foodNode?.removeFromParent()
+    private func dropFoodBowl(for a: PetActor) {
+        a.clearFoodBowlImmediately()
 
         // 食盆和宠物同深度，所以用宠物当前缩放，不是 pixelScale。
         // 注意要换算成「源像素 → pt」，纹理预放大不影响手绘元素。
-        let u = sourcePixelUnit        // 1 源像素 = u pt
+        let u = a.sourcePixelUnit      // 1 源像素 = u pt
         let container = SKNode()
 
         /// 以「盆底左边缘」为原点画，方便对齐地面
@@ -611,23 +484,23 @@ final class PetScene: SKScene {
         // 放在宠物**面朝的那一侧**，脚底同一水平线上。
         // 距离 = 宠物身体半宽(12源像素) + 盆半宽(7) + 一点间隙 ≈ 20 源像素
         // 朝向正面/背面时放右侧，避免盆压在身上
-        let dir: CGFloat = facing == .left ? -1 : 1
+        let dir: CGFloat = a.facing == .left ? -1 : 1
         let side: CGFloat = dir * u * 20
-        container.position = CGPoint(x: pet.position.x + side, y: petFeetY)
+        container.position = CGPoint(x: a.node.position.x + side, y: a.feetY)
         container.zPosition = 11
         container.alpha = 0
         addChild(container)
         container.run(.fadeIn(withDuration: 0.15))
-        foodNode = container
+        a.setFoodBowl(container)
     }
 
     func triggerPlay() {
-        guard let pet else { return }
+        guard let a = selected else { return }
         // 玩耍会叫醒宠物
-        if isSleeping {
-            behavior = .idle
-            nextDecisionAt = 0
-            applyIdlePose()
+        if isSleeping(a) {
+            a.behavior = .idle
+            a.nextDecisionAt = 0
+            a.applyIdlePose()
         }
         showEmote(.music)
 
@@ -635,21 +508,21 @@ final class PetScene: SKScene {
         // moveBy 一旦被打断（中途切睡觉/换宠物），宠物会永久停在半空。
         // 基准取**吸附后的显示位置**，和 moveToward 写入的值一致，
         // 否则蹦完会和 exactPosition 差半个像素，下一帧突跳一下。
-        let baseY = exactPosition.y
+        let baseY = a.exactPosition.y
         let hop = SKAction.sequence([
             {
-                let a = SKAction.moveTo(y: baseY + pixelScale * 7, duration: 0.16)
-                a.timingMode = .easeOut
-                return a
+                let up = SKAction.moveTo(y: baseY + pixelScale * 7, duration: 0.16)
+                up.timingMode = .easeOut
+                return up
             }(),
             {
-                let a = SKAction.moveTo(y: baseY, duration: 0.16)
-                a.timingMode = .easeIn
-                return a
+                let down = SKAction.moveTo(y: baseY, duration: 0.16)
+                down.timingMode = .easeIn
+                return down
             }()
         ])
-        pet.removeAction(forKey: "hop")
-        pet.run(.repeat(hop, count: 2), withKey: "hop")
+        a.node.removeAction(forKey: "hop")
+        a.node.run(.repeat(hop, count: 2), withKey: "hop")
     }
 
     /// 按互动 id 播对应动画。
@@ -666,7 +539,7 @@ final class PetScene: SKScene {
     }
 
     func triggerClean() {
-        guard let pet else { return }
+        guard let a = selected else { return }
         showEmote(.droplet)
         // 结尾显式设回 alpha=1，防止动画被打断后宠物半透明卡住
         let fade = SKAction.sequence([
@@ -675,8 +548,8 @@ final class PetScene: SKScene {
             .fadeAlpha(to: 0.55, duration: 0.18),
             .fadeAlpha(to: 1, duration: 0.18)
         ])
-        pet.removeAction(forKey: "clean")
-        pet.run(fade, withKey: "clean")
+        a.node.removeAction(forKey: "clean")
+        a.node.run(fade, withKey: "clean")
     }
 
     // MARK: - 气泡（实现在 BubbleLayer）
@@ -698,7 +571,8 @@ final class PetScene: SKScene {
     // MARK: - 触摸
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let location = touches.first?.location(in: self), pet != nil else { return }
+        guard let location = touches.first?.location(in: self),
+              !actors.isEmpty else { return }
 
         // 先看是不是按在家具上 —— 长按才拖，短按当作点地面
         if let node = furnitureHit(at: location) {
@@ -710,11 +584,23 @@ final class PetScene: SKScene {
             }
         }
 
-        if pet.frame.insetBy(dx: -14, dy: -14).contains(location) {
-            strokePet()
-        } else if !isSleeping {
+        // 点到哪只就选中它并抚摸。
+        //
+        // 多只可能视觉重叠，所以取**最靠前**的（y 小 = 离镜头近），
+        // 和绘制顺序一致 —— 否则会点中被挡住的那只。
+        let hit = actors
+            .filter { $0.contains(location, inset: -14) }
+            .min { $0.node.position.y < $1.node.position.y }
+
+        if let hit {
+            if hit.petID != selectedID {
+                selectedID = hit.petID
+                onPetSelected?(hit.petID)
+            }
+            strokePet(hit)
+        } else if let a = selected, !isSleeping(a) {
             touchPoint = floor.clamp(location)
-            applyWalkAnimation()
+            a.applyWalkAnimation()
         }
     }
 
@@ -723,25 +609,24 @@ final class PetScene: SKScene {
     /// 睡着时戳会把它叫醒 —— 必须先退出 .sleeping，
     /// 否则挤压动画的 `scale(to: pixelScale)` 会覆盖睡姿的压扁状态，
     /// 造成「状态是睡着、外观是站着」的不一致。
-    private func strokePet() {
-        guard let pet else { return }
-
-        if isSleeping {
-            behavior = .idle
-            nextDecisionAt = 0
-            applyIdlePose()
+    private func strokePet(_ a: PetActor) {
+        if isSleeping(a) {
+            a.behavior = .idle
+            a.nextDecisionAt = 0
+            a.applyIdlePose()
             showEmote(.question)      // 被叫醒，一脸问号
         } else {
             showEmote(.heart)
         }
         onPetTouched?()
 
-        pet.removeAction(forKey: "squash")
+        let s0 = a.scale(atDepth: depth(of: a))
+        a.node.removeAction(forKey: "squash")
         let squash = SKAction.sequence([
-            .scaleX(to: currentPetScale * 1.12, y: currentPetScale * 0.88, duration: 0.08),
-            .scale(to: currentPetScale, duration: 0.14)
+            .scaleX(to: s0 * 1.12, y: s0 * 0.88, duration: 0.08),
+            .scale(to: s0, duration: 0.14)
         ])
-        pet.run(squash, withKey: "squash")
+        a.node.run(squash, withKey: "squash")
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
@@ -825,31 +710,40 @@ final class PetScene: SKScene {
         guard motion.isAccelerometerAvailable else { return }
         motion.accelerometerUpdateInterval = 0.1
         motion.startAccelerometerUpdates(to: .main) { [weak self] data, _ in
-            guard let self, let data, let pet = self.pet, !self.isStartled else { return }
+            guard let self, let data, !self.isStartled,
+                  !self.actors.isEmpty else { return }
             let a = data.acceleration
             let magnitude = sqrt(a.x * a.x + a.y * a.y + a.z * a.z)
             // 静止时约为 1g。超过 1.8 认为是明显摇晃。
             guard magnitude > 1.8 else { return }
-            self.startle(pet)
+            self.startleAll()
         }
     }
 
-    private func startle(_ pet: SKSpriteNode) {
+    /// 摇晃惊到**全部**宠物 —— 手机在抖，没道理只有一只感觉到。
+    private func startleAll() {
         isStartled = true
-        behavior = .startled
         touchPoint = nil
         showEmote(.alert)
+
         let shake = SKAction.sequence([
             .moveBy(x: -6, y: 0, duration: 0.05),
             .moveBy(x: 12, y: 0, duration: 0.05),
             .moveBy(x: -6, y: 0, duration: 0.05)
         ])
-        pet.run(.repeat(shake, count: 3)) { [weak self] in
-            guard let self else { return }
-            self.isStartled = false
-            self.behavior = .idle
-            self.nextDecisionAt = 0
-            self.applyIdlePose()
+        let group = DispatchGroup()
+        for a in actors {
+            a.behavior = .startled
+            group.enter()
+            a.node.run(.repeat(shake, count: 3)) { [weak a] in
+                a?.behavior = .idle
+                a?.nextDecisionAt = 0
+                a?.applyIdlePose()
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) { [weak self] in
+            self?.isStartled = false
         }
     }
 }

@@ -52,6 +52,11 @@ struct PetHomeView: View {
             scene.layout = roomStore.layout
             syncScenePet()
 
+            // 点某只 -> 选中它。store 是真相源，场景只是通知。
+            scene.onPetSelected = { id in
+                store.select(petID: id)
+            }
+
             scene.onPetTouched = {
                 // 睡着时戳它 = 叫醒，并维持一段清醒。
                 // 否则站起来后下一次心跳又会把它按回去睡。
@@ -77,6 +82,8 @@ struct PetHomeView: View {
             // 曾经用「距上次玩耍的时间」判断，导致一摸就睡（见 PetState.isDrowsy）。
             scene.setSleeping(store.pet.isDrowsy(at: store.tick))
         }
+        .onChange(of: store.pets.count) { _, _ in syncScenePet() }
+        .onChange(of: store.selectedPetID) { _, _ in syncScenePet() }
         .onChange(of: store.pet.breedID) { _, _ in syncScenePet() }
         .onChange(of: store.pet.colorIndex) { _, _ in syncScenePet() }
         .onChange(of: store.pet.stage) { _, _ in syncScenePet() }
@@ -126,11 +133,12 @@ struct PetHomeView: View {
         }
     }
 
-    /// 把宠物的品种/毛色/阶段同步给场景。
+    /// 把**全部**宠物同步给场景。
+    ///
+    /// 场景自己 diff（增删改），不重建 —— 重建会让所有宠物位置归零、
+    /// 动画重启。
     private func syncScenePet() {
-        scene.configure(breed: store.pet.breed,
-                        colorIndex: store.pet.colorIndex,
-                        stage: store.pet.stage)
+        scene.sync(pets: store.pets, selectedID: store.selectedPetID)
     }
 
     /// 触发说话。

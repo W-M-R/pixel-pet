@@ -273,3 +273,72 @@ final class SheetLayoutFlexibilityTests: XCTestCase {
         XCTAssertEqual(l.sleepRows, 2)
     }
 }
+
+/// 多宠渲染。
+///
+/// 这组测试锁住一个**极难从表象反推**的 bug：
+/// `SKSpriteNode()` 之后再赋 `.texture` 不会同步 `size`，节点停在 0×0。
+/// 屏幕上一只宠物都看不见，而 position / scale / parent / alpha / texture
+/// 全都是对的 —— 我靠往场景里打 `size=%.0fx%.0f` 才定位到。
+@MainActor
+final class PetActorTests: XCTestCase {
+
+    private func makeActor(_ breed: PetBreed = .cat, color: Int = 0) -> PetActor {
+        PetActor(petID: "t", breed: breed, colorIndex: color,
+                 stage: .adult, pixelScale: 4)
+    }
+
+    /// **节点必须有非零尺寸**，否则有纹理也画不出来
+    func testNodeHasNonZeroSize() {
+        let a = makeActor()
+        XCTAssertNotNil(a.node.texture, "取不到纹理说明素材没打进 bundle")
+        XCTAssertGreaterThan(a.node.size.width, 0,
+                             "size 是 0 —— 大概率是先 SKSpriteNode() 再赋 texture")
+        XCTAssertGreaterThan(a.node.size.height, 0)
+    }
+
+    /// 每只 actor 各持一份行为状态 —— 共用的话一只走路另一只会跟着走
+    func testActorsHaveIndependentBehavior() {
+        let a = makeActor(.cat)
+        let b = makeActor(.dog)
+        a.behavior = .wandering(target: CGPoint(x: 10, y: 10))
+        b.behavior = .sleeping
+
+        if case .wandering = a.behavior {} else { XCTFail("a 的行为被覆盖了") }
+        if case .sleeping = b.behavior {} else { XCTFail("b 的行为被覆盖了") }
+
+        a.facing = .left
+        b.facing = .right
+        XCTAssertEqual(a.facing, .left)
+        XCTAssertEqual(b.facing, .right)
+    }
+
+    /// 外观没变时不该报告「变了」—— 否则每帧都重贴图
+    func testUpdateAppearanceOnlyReportsRealChanges() {
+        let a = makeActor(.cat, color: 1)
+        XCTAssertFalse(a.updateAppearance(breed: .cat, colorIndex: 1, stage: .adult),
+                       "没变却报告变了")
+        XCTAssertTrue(a.updateAppearance(breed: .cat, colorIndex: 2, stage: .adult),
+                      "换毛色该报告变了")
+        XCTAssertTrue(a.updateAppearance(breed: .dog, colorIndex: 2, stage: .adult),
+                      "换品种该报告变了")
+        XCTAssertTrue(a.updateAppearance(breed: .dog, colorIndex: 2, stage: .young),
+                      "换阶段该报告变了")
+    }
+
+    /// footPadding 是 per-breed 的，脚底位置要跟着不同
+    func testFeetYUsesBreedFootPadding() {
+        let cat = makeActor(.cat)
+        let dog = makeActor(.dog)
+        cat.node.position = CGPoint(x: 0, y: 100)
+        dog.node.position = CGPoint(x: 0, y: 100)
+        XCTAssertNotEqual(cat.feetY, dog.feetY,
+                          "cat footPadding=5 / dog=3，脚底不该一样")
+    }
+
+    /// 深度越大（越远）缩放越小
+    func testScaleShrinksWithDepth() {
+        let a = makeActor()
+        XCTAssertGreaterThan(a.scale(atDepth: 0), a.scale(atDepth: 1))
+    }
+}
