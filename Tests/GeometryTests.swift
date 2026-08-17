@@ -493,3 +493,75 @@ final class FloorClearanceTests: XCTestCase {
                              "地板纵深只剩 \(span)pt —— 宠物没地方走了")
     }
 }
+
+/// 进食帧的朝向能力。
+///
+/// **这组测试记录一个素材事实**，它决定了吃饭站位的设计：
+/// LPC 的进食帧（r4）是正面低头的**对称**姿态，没有朝左/朝右的版本。
+///
+/// 我因为忽略这一点白调了几轮站位 —— 一直以为是坐标算错，
+/// 其实是「侧向进食帧不存在」，宠物站在碗侧面时头永远对不着碗。
+/// 所以宠物必须站在碗的**正后方**（见 `PetScene.gatherToBowl`）。
+final class EatFrameOrientationTests: XCTestCase {
+
+    /// 进食行与朝向**无关** —— 传任何 facing 都返回同一行。
+    ///
+    /// 曾经 `startChewing` 里有句 `a.facing = 碗在左还是右`，
+    /// 那行完全无效，却让人误以为朝向已经处理过了。
+    func testEatRowIgnoresFacing() {
+        let layout = PetBreed.cat.layout
+        let rows = PetSpriteSheet.Facing.allCases.map { _ in
+            PetSpriteSheet.Action.eat.row(in: layout)
+        }
+        XCTAssertEqual(Set(rows).count, 1, "进食行不该随朝向变化")
+        XCTAssertEqual(rows.first, layout.eatRow)
+    }
+
+    /// 进食帧是左右对称的（头在格中心），所以只适合正面朝向镜头。
+    ///
+    /// 实测（解码 r4 四帧，取头部区域的水平重心）：
+    ///   cat 内容 x 10..22，头重心 16.0
+    ///   dog 内容 x 11..21，头重心 16.0
+    /// 格中心是 16 —— 完全居中，没有偏向任何一侧。
+    func testEatFramesAreHorizontallySymmetric() throws {
+        for breed in PetBreed.all {
+            let url = Bundle.main.url(forResource: breed.sheetName,
+                                      withExtension: "png")
+            let path = try XCTUnwrap(url, "\(breed.id) 素材缺失")
+            let img = try XCTUnwrap(UIImage(contentsOfFile: path.path))
+            let cg = try XCTUnwrap(img.cgImage)
+
+            let layout = breed.layout
+            let cell = Int(layout.cell)
+            let eatRow = try XCTUnwrap(layout.eatRow)
+
+            // 取 r4c0
+            let rect = CGRect(x: 0, y: eatRow * cell, width: cell, height: cell)
+            let frame = try XCTUnwrap(cg.cropping(to: rect))
+
+            // 读 alpha，算不透明像素的水平重心
+            let w = frame.width, h = frame.height
+            var data = [UInt8](repeating: 0, count: w * h * 4)
+            let ctx = CGContext(data: &data, width: w, height: h,
+                                bitsPerComponent: 8, bytesPerRow: w * 4,
+                                space: CGColorSpaceCreateDeviceRGB(),
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            ctx?.draw(frame, in: CGRect(x: 0, y: 0, width: w, height: h))
+
+            var sumX = 0, count = 0
+            for y in 0..<h {
+                for x in 0..<w where data[(y * w + x) * 4 + 3] > 0 {
+                    sumX += x; count += 1
+                }
+            }
+            XCTAssertGreaterThan(count, 0, "\(breed.id) 的进食帧是空的")
+
+            let centroid = Double(sumX) / Double(count)
+            let center = Double(cell) / 2
+            XCTAssertEqual(centroid, center, accuracy: 1.5,
+                           "\(breed.id) 的进食帧重心 \(centroid) 偏离格中心 \(center) "
+                           + "—— 如果素材换成了侧向进食帧，"
+                           + "gatherToBowl 可以改回站碗两侧")
+        }
+    }
+}

@@ -560,81 +560,57 @@ final class PetScene: SKScene {
     }
 
     /// 围到碗边吃。
+    ///
+    /// **宠物站在碗的正后方**（碗在前、宠物在后），不是碗的左右两侧。
+    ///
+    /// 原因是素材：LPC 的进食帧（r4）是**正面朝镜头低头**的对称姿态
+    /// （实测四帧内容 x 10..22、头部重心正好在格中心 16），
+    /// 没有朝左/朝右的版本。所以宠物站在碗侧面时，头永远对不着碗 ——
+    /// 我一度以为是站位坐标算错，调了几轮站位都不对，
+    /// 根因其实是「侧向进食帧不存在」。
+    ///
+    /// 站正后方之后，正面低头的姿态正好朝着前方的碗。
+    /// 多只时横向并排、稍微错开，各自低头吃自己那一侧。
     private func gatherToBowl(_ bowl: SKNode, item: FurnitureItem) {
         touchPoint = nil
         bubbles?.uiIcon(0)
 
-        // 按「离碗近的先来」排队，容量满了的这次就不吃 ——
-        // 比随机挑更符合直觉（近的先到）。
+        // 按「离碗近的先来」排队，容量满了的这次就不吃
         let queue = actors.sorted {
             abs($0.node.position.x - bowl.position.x)
                 < abs($1.node.position.x - bowl.position.x)
         }
 
+        // 碗所在的地板深度。宠物要站在它**后面**（depth 更大 = 更远）。
+        let bowlDepth = floor.depth(atY: bowlCenterY)
+        // 往后让一点，让碗露在宠物前面 —— 这也是"凑过去吃"的视觉证据
+        let standDepth = min(0.92, bowlDepth + 0.10)
+
         for (i, a) in queue.enumerated() where i < item.feedSlots {
-            // **睡着的也叫醒。** `step()` 会跳过 .sleeping 的宠物，
-            // 不先唤醒的话它永远走不到碗边 —— 实测就是这样：
-            // 狗到位吃上了，猫因为在睡觉原地不动，看起来像"位置不对"。
+            // 睡着的先叫醒 —— `step()` 会跳过 .sleeping，
+            // 不唤醒它永远走不到碗边（实测：一只吃上了，另一只在原地睡）
             if isSleeping(a) {
                 a.nextDecisionAt = 0
                 a.applyIdlePose()
             }
 
-            // 左右交替：0→左, 1→右, 2→左更外, 3→右更外
-            let side: CGFloat = (i % 2 == 0) ? -1 : 1
-            let rank = CGFloat(i / 2)
+            // 横向并排：以碗为中心左右交替铺开。
+            // 间距按宠物身体宽度（约 24 源像素）算，避免互相重叠。
+            let unit = a.scale(atDepth: standDepth) * CGFloat(PetSpriteSheet.prescale)
+            let bodyW = 24 * unit
+            // 0 → 正中，1 → 右一位，2 → 左一位，3 → 右两位…
+            let step: CGFloat
+            switch i {
+            case 0: step = 0
+            case 1: step = 1
+            case 2: step = -1
+            default: step = CGFloat(i % 2 == 1 ? (i + 1) / 2 : -((i + 1) / 2))
+            }
+            let centerX = bowl.position.x + step * bodyW * 0.85
 
-            // **嘴对准碗边，不是身体中心对准碗。**
-            //
-            // 原来的公式是 `side * u * (cellWidth*8 + 9 + rank*7)`，
-            // 有两个问题：
-            // 1. 算的是**节点中心**到碗中心的距离，而宠物的嘴比中心
-            //    前伸 11-12 源像素（实测鼻尖 x=27/28，格中心 16）——
-            //    所以它站得离碗太远，看起来像在旁边发呆
-            // 2. 偏移用家具缩放 u=3，而宠物大小由自己的 depth 决定，
-            //    两个比例尺混在一个公式里
-            //
-            // 现在都用**宠物自己的像素单位**算：
-            //   目标嘴位置 = 碗边缘稍微往里
-            //   节点中心 = 目标嘴位置 - 嘴前伸量
-            let bowlHalfW = FurnitureItem.cell * CGFloat(item.cellWidth)
-                / 2 * FurnitureItem.displayScale
-            // 先按当前缩放估一个，下面算完 depth 再用目标处的缩放修正 x
-            let unit = a.sourcePixelUnit
-            // 嘴落在**碗沿外侧一点**（+3 源像素）。
-            //
-            // 曾经取碗沿内侧（-2），结果两只宠物的身体把 32px 宽的碗
-            // 整个夹住看不见了 —— 宠物身体约 24 源像素宽，
-            // 嘴贴到碗中心线附近时身体就压过来了。
-            // 往外让 3 像素，碗露出来，看着也更像"低头凑过去吃"。
-            let mouthTargetX = bowl.position.x + side * (bowlHalfW + 3 * unit)
-            // 外圈往外让开一个身位，避免和内圈重叠
-            let ringGap = rank * 14 * unit
-            // ⚠️ 朝向和「在碗的哪一侧」是**相反**的：
-            // 站左边的宠物要朝右（才对着碗），所以 dir = -side。
-            // 第一版写成 `- side * reach`，等于用了错误的方向，
-            // 结果两只都往碗中心挤，身体把碗整个盖住了
-            // （实测中心只差 20pt，而身体宽 83pt）。
-            let dir = -side
-            let centerX = mouthTargetX - dir * (a.layoutMouthReach * unit)
-                + side * ringGap
-
-            // 站到碗所在的那条地板线上。
-            //
-            // 家具底边已经按 `petFootDrop` 对齐过宠物脚底（见 addFurniture），
-            // 所以这里只要取碗的 depth，宠物的中心 y 自然就对 ——
-            // 两者用的是同一套坐标语义。
-            //
-            // 曾经在这里用「当前缩放反推脚底」，但走过去的路上 depth 会变、
-            // 缩放跟着变，用当前值算的目标到了那里就不成立了。
-            let bowlDepth = floor.depth(atY: bowlCenterY)
-            // 外圈稍微近一点，前后错开才不会挡住内圈
-            let targetDepth = min(0.92, max(0.05, bowlDepth - Double(rank) * 0.05))
             let target = floor.clamp(CGPoint(x: centerX,
-                                             y: floor.y(atDepth: targetDepth)))
+                                             y: floor.y(atDepth: standDepth)))
             a.behavior = .walkingToBowl(target: target)
-            // 先摆好朝向 —— 朝向决定嘴在哪一侧，走的时候就该是对的
-            a.facing = side < 0 ? .right : .left
             a.applyWalkAnimation()
         }
     }
@@ -642,10 +618,11 @@ final class PetScene: SKScene {
     /// 到碗边了，开始咀嚼。
     private func startChewing(_ a: PetActor) {
         a.behavior = .eating
-        // 面朝碗
-        if let bowl = bowlNode {
-            a.facing = bowl.position.x >= a.node.position.x ? .right : .left
-        }
+        // ⚠️ 这里**不设 facing**。进食帧固定取 `layout.eatRow`（第 4 行），
+        // 那是正面低头的对称姿态，不看朝向 ——
+        // 曾经在这里写 `a.facing = 碗在左还是右`，那行代码完全无效，
+        // 却让人误以为"朝向已经处理过了"，掩盖了真正的问题
+        // （素材没有侧向进食帧，所以必须站碗正后方）。
         a.applyEatAnimation { [weak a] in
             a?.behavior = .idle
             a?.nextDecisionAt = 0
