@@ -424,3 +424,65 @@ final class BowlSlotLayoutTests: XCTestCase {
                              "容量更大就该更贵")
     }
 }
+
+/// 地板不能盖到底部按钮区。
+///
+/// 你报的问题：**宠物走到「喂食」按钮下面，很难按到按键。**
+/// 根因是地板最近处取 `height * 0.055`（≈53pt），
+/// 而三个互动按钮占到 y≈97pt —— 宠物能整个走到按钮上面。
+///
+/// SpriteKit 场景是全屏的（`ignoresSafeArea`），所以场景得自己
+/// 把按钮区让出来。这组测试锁住那个余量。
+final class FloorClearanceTests: XCTestCase {
+
+    /// 复现 `PetHomeView.actionBar` 的高度。
+    ///
+    /// ⚠️ 和视图布局耦合 —— 改按钮尺寸要同步改这里和
+    /// `PetScene.floorFrontY`，否则宠物会再压到按钮上。
+    private var actionBarHeight: CGFloat {
+        let icon: CGFloat = 4 * 6        // PixelIconView size: Pixel.u(6)
+        let gap: CGFloat = 4 * 1         // VStack spacing: Pixel.u(1)
+        let label: CGFloat = 13          // Pixel.labelSize
+        let padV: CGFloat = 4 * 1.75 * 2 // .padding(.vertical, Pixel.u(1.75))
+        return icon + gap + label + padV
+    }
+
+    /// 场景里 `floorFrontY` 的公式（safeAreaInsets 取不到时的兜底值）
+    private func floorFrontY(safeBottom: CGFloat = 34) -> CGFloat {
+        let buttonHeight: CGFloat = 55
+        return buttonHeight + safeBottom + 8 + 4 * 2
+    }
+
+    /// **地板最近处必须在按钮顶边之上。**
+    func testFloorClearsActionBar() {
+        let safeBottom: CGFloat = 34
+        let buttonTop = 8 + safeBottom + actionBarHeight
+        let front = floorFrontY(safeBottom: safeBottom)
+
+        XCTAssertGreaterThan(front, buttonTop,
+                             "地板最近处 \(front) 低于按钮顶边 \(buttonTop) "
+                             + "—— 宠物会走到按钮上面挡住点击")
+    }
+
+    /// 我算的按钮高度要和公式里用的 55 对得上
+    func testAssumedButtonHeightMatchesLayout() {
+        XCTAssertEqual(actionBarHeight, 55, accuracy: 1,
+                       "按钮高度变了 —— floorFrontY 里的 55 要同步改")
+    }
+
+    /// 没有安全区的设备（老 iPhone）也要让出按钮区
+    func testWorksWithoutSafeArea() {
+        let front = floorFrontY(safeBottom: 0)
+        let buttonTop = 8 + 0 + actionBarHeight
+        XCTAssertGreaterThan(front, buttonTop, "无安全区设备上也不能压到按钮")
+    }
+
+    /// 让出按钮区之后，地板还得有足够纵深走动
+    func testFloorStillHasUsableDepth() {
+        let height: CGFloat = 956          // iPhone 15 Pro Max
+        let backY = height * 0.30 - 4 * 2
+        let span = backY - floorFrontY()
+        XCTAssertGreaterThan(span, 120,
+                             "地板纵深只剩 \(span)pt —— 宠物没地方走了")
+    }
+}

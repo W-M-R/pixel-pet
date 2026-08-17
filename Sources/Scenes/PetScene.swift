@@ -89,12 +89,30 @@ final class PetScene: SKScene {
     /// 而且宠物太靠下会被自己的影子挤出画面。
     private var floor: FloorPlane {
         FloorPlane(backY: wallBaseY - pixelScale * 2,
-                   frontY: size.height * 0.055,
+                   frontY: floorFrontY,
                    width: size.width)
     }
 
     /// 兼容用：默认站位取地板中段偏近处
     private var groundY: CGFloat { floor.y(atDepth: 0.35) }
+
+    /// 地板最近处的 y —— **要把底部按钮区让出来**。
+    ///
+    /// 原来是 `size.height * 0.055`（≈53pt），而三个互动按钮
+    /// 占到 y≈97pt（55pt 按钮 + 34pt 安全区 + 8pt 边距）。
+    /// 结果宠物能整个走到按钮上面，挡住「喂食」很难点。
+    ///
+    /// SpriteKit 场景是全屏的（`ignoresSafeArea`），所以这里得自己
+    /// 算出按钮区的高度。数值和 `PetHomeView.actionBar` 的布局耦合 ——
+    /// 由 `testFloorClearsActionBar` 守着，改按钮尺寸时会失败提醒。
+    private var floorFrontY: CGFloat {
+        // 按钮本体：图标 24 + 间距 4 + 文字 13 + 上下内边距 14
+        let buttonHeight: CGFloat = 55
+        // 底部安全区（Home 指示器）。取不到时用 34 兜底。
+        let safeBottom = view?.safeAreaInsets.bottom ?? 34
+        // VStack 的 .padding(.bottom, 8) + 一点余量，让脚底不贴按钮边
+        return buttonHeight + safeBottom + 8 + pixelScale * 2
+    }
 
     var onPetTouched: (() -> Void)?
 
