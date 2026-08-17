@@ -116,9 +116,15 @@ struct AchievementRule: RewardRule {
     var isOneTime: Bool { true }
 
     enum Group: String, CaseIterable {
-        case companion, growth, care, food, collection
+        case companion, growth, care, food, collection, economy
         var nameKey: String { "achv.group.\(rawValue)" }
     }
+
+    /// 解锁条件的说明文案 key。
+    ///
+    /// 约定 `achv.<id>.desc` —— 由 id 推导而非单独存字段，
+    /// 这样加成就时不会漏（漏了界面会显示 key 本身，测试也会抓）。
+    var descKey: String { "achv.\(id).desc" }
 
     func evaluate(_ ctx: RewardContext) -> RewardOutcome? {
         guard condition(ctx.pet, ctx.wallet) else { return nil }
@@ -127,43 +133,82 @@ struct AchievementRule: RewardRule {
                              messageArgs: [L(nameKey), coins])
     }
 
-    // MARK: - 19 条
+    // MARK: - 成就表
 
-    static let all: [AchievementRule] = companion + growth + care + food + collection
+    static let all: [AchievementRule] =
+        companion + growth + care + food + collection + economy
 
-    /// 陪伴（5 条，380 枚）
+    /// 陪伴（5 条）。
+    ///
+    /// ⚠️ `streak_*` 看的是 **`wellCaredDays`（照顾达标天数）**，
+    /// 不是「打开 app 的天数」。
+    ///
+    /// 原来看 `streakDays`，只要每天点开就 +1 —— 放养 30 天
+    /// 照样拿满 2000 枚。当时时间型成就占全部成就金额的 61%，
+    /// 完全不看照顾质量，导致「放养 30 天」和「认真养 13 天」
+    /// 都能买第二只宠物，违反「照顾好宠物 = 赚得多」
+    /// （docs/00-overview.md 第 5 条）。
+    ///
+    /// 达标定义：当天三维平均 ≥ `StateThreshold.wellCared`(0.6)。
     static let companion: [AchievementRule] = [
         .init(id: "first_feed", nameKey: "achv.first_feed", coins: 100, group: .companion,
               condition: { p, _ in (p.totalFeedCount ?? 0) >= 1 }, progress: nil),
-        .streak(3, coins: 200), .streak(7, coins: 500),
-        .streak(15, coins: 1000), .streak(30, coins: 2000),
+        .cared(3, coins: 200), .cared(7, coins: 500),
+        .cared(15, coins: 1000), .cared(30, coins: 2000),
     ]
 
-    /// 成长（4 条，445 枚）
+    /// 成长（4 条）。
+    ///
+    /// **金额刻意压低。** 这几条纯粹是时间流逝的产物 ——
+    /// 装着不管也会到成年、到老年，所以不该给大钱。
+    /// 原来是 150/300/1000/3000（共 4450），现在 80/150/400/800（共 1430），
+    /// 省下的 3020 枚挪到要真互动才拿得到的照料型。
     static let growth: [AchievementRule] = [
-        .init(id: "stage_growing", nameKey: "achv.stage_growing", coins: 150, group: .growth,
+        .init(id: "stage_growing", nameKey: "achv.stage_growing", coins: 80, group: .growth,
               condition: { p, _ in p.ageInDays >= PetStage.growing.minDays }, progress: nil),
-        .init(id: "stage_adult", nameKey: "achv.stage_adult", coins: 300, group: .growth,
+        .init(id: "stage_adult", nameKey: "achv.stage_adult", coins: 150, group: .growth,
               condition: { p, _ in p.ageInDays >= PetStage.adult.minDays }, progress: nil),
-        .init(id: "stage_elder", nameKey: "achv.stage_elder", coins: 1000, group: .growth,
+        .init(id: "stage_elder", nameKey: "achv.stage_elder", coins: 400, group: .growth,
               condition: { p, _ in p.ageInDays >= PetStage.elder.minDays }, progress: nil),
-        .init(id: "age_100", nameKey: "achv.age_100", coins: 3000, group: .growth,
+        .init(id: "age_100", nameKey: "achv.age_100", coins: 800, group: .growth,
               condition: { p, _ in p.ageInDays >= 100 },
               progress: { p, _ in (min(p.ageInDays, 100), 100) }),
     ]
 
-    /// 照料（5 条，320 枚）
+    /// 照料（11 条）—— **必须真的互动才拿得到**，是主要的金币来源。
     static let care: [AchievementRule] = [
         .counted("feed_50", key: "achv.feed_50", coins: 400, target: 50, group: .care,
                  value: { p, _ in p.totalFeedCount ?? 0 }),
         .counted("feed_200", key: "achv.feed_200", coins: 1200, target: 200, group: .care,
                  value: { p, _ in p.totalFeedCount ?? 0 }),
+        .counted("feed_500", key: "achv.feed_500", coins: 2000, target: 500, group: .care,
+                 value: { p, _ in p.totalFeedCount ?? 0 }),
         .counted("play_30", key: "achv.play_30", coins: 300, target: 30, group: .care,
+                 value: { p, _ in p.totalPlayCount ?? 0 }),
+        .counted("play_100", key: "achv.play_100", coins: 800, target: 100, group: .care,
+                 value: { p, _ in p.totalPlayCount ?? 0 }),
+        .counted("play_300", key: "achv.play_300", coins: 1800, target: 300, group: .care,
                  value: { p, _ in p.totalPlayCount ?? 0 }),
         .counted("clean_20", key: "achv.clean_20", coins: 300, target: 20, group: .care,
                  value: { p, _ in p.totalCleanCount ?? 0 }),
         .counted("clean_100", key: "achv.clean_100", coins: 1000, target: 100, group: .care,
                  value: { p, _ in p.totalCleanCount ?? 0 }),
+        .counted("clean_300", key: "achv.clean_300", coins: 1800, target: 300, group: .care,
+                 value: { p, _ in p.totalCleanCount ?? 0 }),
+        // 状态型：奖励「把宠物照顾得好」这个结果本身，而非互动次数。
+        //
+        // ⚠️ 必须要求「已经养了一阵」——新宠物三维是满的，
+        // 只判状态的话开局第一秒就白送 500 枚，而玩家什么都没做。
+        // 门槛取「三类互动各做过一次」：那说明状态是维持出来的，不是初始值。
+        .init(id: "all_high", nameKey: "achv.all_high", coins: 500, group: .care,
+              condition: { p, _ in
+                  guard (p.totalFeedCount ?? 0) >= 1,
+                        (p.totalPlayCount ?? 0) >= 1,
+                        (p.totalCleanCount ?? 0) >= 1 else { return false }
+                  let now = Date()
+                  return p.satiety(at: now) >= 0.9 && p.mood(at: now) >= 0.9
+                      && p.hygiene(at: now) >= 0.9
+              }, progress: nil),
     ]
 
     /// 美食（3 条，120 枚）
@@ -177,20 +222,48 @@ struct AchievementRule: RewardRule {
                  value: { p, _ in p.foodCounts?[FoodItem.driedFish.id] ?? 0 }),
     ]
 
-    /// 收藏（2 条，70 枚）
+    /// 收藏（4 条）。多宠玩法带来的新维度。
     static let collection: [AchievementRule] = [
         .counted("breed_2", key: "achv.breed_2", coins: 300, target: 2, group: .collection,
                  value: { p, _ in p.triedBreeds?.count ?? 1 }),
         .counted("color_4", key: "achv.color_4", coins: 400, target: 4, group: .collection,
                  value: { p, _ in p.triedColors?.count ?? 1 }),
+        // 同时养几只。`ownedBreeds` 是「买过的品种」，
+        // 而真正的宠物数量在 PetStore.pets —— 钱包里记不到，
+        // 所以用买过的品种数近似（每买一次就多一只）。
+        .counted("pets_2", key: "achv.pets_2", coins: 500, target: 2, group: .collection,
+                 value: { _, w in w.ownedBreeds.count }),
+        .counted("pets_3", key: "achv.pets_3", coins: 1500, target: 3, group: .collection,
+                 value: { _, w in w.ownedBreeds.count }),
+    ]
+
+    /// 经济（3 条）。给「攒钱」这件事本身一点反馈。
+    ///
+    /// ⚠️ **三条都用 `totalEarned`（累计赚取），不用余额。** 两个原因：
+    /// 1. 余额会因为买东西下降，拿它当条件的话玩家不敢花钱
+    /// 2. 启动资金就是 5000 —— 用余额的话「存款达 5000」在开局
+    ///    第一秒就达成，白送 300 枚。这个 bug 是被
+    ///    `OpeningSequenceTests` 抓到的：它断言「刚建的 store
+    ///    不该有收益播报」，结果冒出一条成就。
+    static let economy: [AchievementRule] = [
+        .counted("rich_5000", key: "achv.rich_5000", coins: 300, target: 3000,
+                 group: .economy, value: { _, w in w.totalEarned }),
+        .counted("earn_10000", key: "achv.earn_10000", coins: 800, target: 10000,
+                 group: .economy, value: { _, w in w.totalEarned }),
+        .counted("earn_50000", key: "achv.earn_50000", coins: 2500, target: 50000,
+                 group: .economy, value: { _, w in w.totalEarned }),
     ]
 
     // MARK: - 构造辅助
 
-    private static func streak(_ days: Int, coins: Int) -> AchievementRule {
+    /// 「照顾达标 N 天」。
+    ///
+    /// id 沿用 `streak_N` —— 改 id 会让已领过的老用户重新拿一遍。
+    /// 但判定依据换成 `wellCaredDays`，文案也改了（见本地化）。
+    private static func cared(_ days: Int, coins: Int) -> AchievementRule {
         .counted("streak_\(days)", key: "achv.streak_\(days)", coins: coins,
                  target: days, group: .companion,
-                 value: { p, _ in p.streakDays ?? 1 })
+                 value: { p, _ in p.wellCaredDays ?? 0 })
     }
 
     /// 带进度的计数型成就

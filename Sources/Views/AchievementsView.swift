@@ -12,6 +12,12 @@ struct AchievementsView: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    /// 展开显示解锁条件的成就 id。nil = 都收起。
+    ///
+    /// 只允许展开一条 —— 全展开的话 30 条会把页面撑得很长，
+    /// 而用户一次只关心一条「这个怎么拿」。
+    @State private var expanded: String?
+
     private var claimedCount: Int {
         AchievementRule.all.filter { store.isClaimed($0) }.count
     }
@@ -89,8 +95,10 @@ struct AchievementsView: View {
     private func row(_ rule: AchievementRule) -> some View {
         let claimed = store.isClaimed(rule)
         let progress = store.achievementProgress(rule)
+        let isOpen = expanded == rule.id
 
-        return HStack(spacing: Pixel.u(2)) {
+        return VStack(alignment: .leading, spacing: Pixel.u(1.5)) {
+        HStack(spacing: Pixel.u(2)) {
             // 已达成打勾，未达成留空框。
             // 方块而非圆圈（SF Symbol 那种）；对勾用自绘图标而非 "✓"
             // 字符 —— 字符要靠字体里有这个字形，缺了就是豆腐块或问号。
@@ -129,10 +137,26 @@ struct AchievementsView: View {
                     .foregroundStyle(claimed ? Pixel.textDim.color : Pixel.coin.color)
             }
         }
+
+            // 点一下展开解锁条件。
+            // 每条成就的说明 key 由 id 推导（achv.<id>.desc），
+            // 所以加成就时漏了文案会直接显示 key —— 测试也会抓。
+            if isOpen {
+                Text(verbatim: L(rule.descKey))
+                    .font(Pixel.mono(Pixel.labelSize))
+                    .foregroundStyle(Pixel.textDim.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, Pixel.u(6))
+            }
+        }
         .padding(Pixel.u(2))
         .background(PixelPanel(fill: claimed ? Pixel.buttonDark : Pixel.button,
                                lite: claimed ? Pixel.buttonDark : Pixel.buttonLite,
                                dark: Pixel.buttonDark))
         .opacity(claimed ? 0.7 : 1)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            expanded = isOpen ? nil : rule.id
+        }
     }
 }

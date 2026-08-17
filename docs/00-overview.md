@@ -12,7 +12,7 @@
 |---|---|
 | [01-economy.md](01-economy.md) | 经济系统：硬币、离线收益、上线奖励、平衡验算 |
 | [02-food.md](02-food.md) | 食物四档、价格、恢复量、"能管多久"的显示规则 |
-| [03-rewards.md](03-rewards.md) | 奖励系统抽象层、19 条成就表 |
+| [03-rewards.md](03-rewards.md) | 奖励系统抽象层、29 条成就表 |
 | [04-balance.md](04-balance.md) | 完整平衡表、调参记录、数值推导过程 |
 | [05-implementation.md](05-implementation.md) | 实施顺序、数据结构变更、测试清单 |
 
@@ -70,7 +70,7 @@ iOS 不给第三方 app 后台定时器。所以状态一律按 `now - lastXxxAt
 | 饱食周期 | 12 小时 | **8 小时** |
 | 硬币 | 无 | 新增 `PetWallet` |
 | 食物 | 单一"喂食"按钮，无消耗 | 四档，需选择与花钱 |
-| 奖励 | 无 | `RewardEngine` + 19 条成就 |
+| 奖励 | 无 | `RewardEngine` + 29 条成就 |
 | emoji 图标 | **有 bug，按钮上不显示** | 修 `Text(verbatim:)` |
 
 emoji bug 的根因见 [05-implementation.md](05-implementation.md#已知-bug)。

@@ -289,6 +289,54 @@
         }
       }
     },
+    "achv.age_100.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spend 100 days together"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "陪伴宠物 100 天"
+          }
+        }
+      }
+    },
+    "achv.all_high": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peak condition"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "状态极佳"
+          }
+        }
+      }
+    },
+    "achv.all_high.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep fullness, mood, and hygiene all above 90% (after feeding, playing, and bathing at least once)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "喂食、玩耍、洗澡各做过一次后，让三维同时保持 90% 以上"
+          }
+        }
+      }
+    },
     "achv.breed_2": {
       "localizations": {
         "en": {
@@ -301,6 +349,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "换个伙伴"
+          }
+        }
+      }
+    },
+    "achv.breed_2.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep 2 different breeds"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "养过 2 个不同品种"
           }
         }
       }
@@ -337,6 +401,22 @@
         }
       }
     },
+    "achv.clean_100.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bathe 100 times"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "累计洗澡 100 次"
+          }
+        }
+      }
+    },
     "achv.clean_20": {
       "localizations": {
         "en": {
@@ -349,6 +429,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "爱干净"
+          }
+        }
+      }
+    },
+    "achv.clean_20.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bathe 20 times"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "累计洗澡 20 次"
+          }
+        }
+      }
+    },
+    "achv.clean_300": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spotless"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一丝不苟"
+          }
+        }
+      }
+    },
+    "achv.clean_300.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bathe 300 times"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "累计洗澡 300 次"
           }
         }
       }
@@ -369,6 +497,86 @@
         }
       }
     },
+    "achv.color_4.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep 4 different coats"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "养过 4 种不同毛色"
+          }
+        }
+      }
+    },
+    "achv.earn_10000": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hard-earned"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "勤劳致富"
+          }
+        }
+      }
+    },
+    "achv.earn_10000.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Earn 10,000 coins in total"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "累计赚取 10000 枚"
+          }
+        }
+      }
+    },
+    "achv.earn_50000": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fortune"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "富甲一方"
+          }
+        }
+      }
+    },
+    "achv.earn_50000.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Earn 50,000 coins in total"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "累计赚取 50000 枚"
+          }
+        }
+      }
+    },
     "achv.feed_200": {
       "localizations": {
         "en": {
@@ -381,6 +589,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "大厨"
+          }
+        }
+      }
+    },
+    "achv.feed_200.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feed 200 times"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "累计喂食 200 次"
           }
         }
       }
@@ -401,6 +625,54 @@
         }
       }
     },
+    "achv.feed_50.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feed 50 times"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "累计喂食 50 次"
+          }
+        }
+      }
+    },
+    "achv.feed_500": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feeding master"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "喂食大师"
+          }
+        }
+      }
+    },
+    "achv.feed_500.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feed 500 times"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "累计喂食 500 次"
+          }
+        }
+      }
+    },
     "achv.first_feed": {
       "localizations": {
         "en": {
@@ -413,6 +685,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "初次见面"
+          }
+        }
+      }
+    },
+    "achv.first_feed.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feed your pet for the first time"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第一次喂食"
           }
         }
       }
@@ -433,6 +721,22 @@
         }
       }
     },
+    "achv.food_can.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feed a can for the first time"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第一次喂罐头"
+          }
+        }
+      }
+    },
     "achv.food_fish": {
       "localizations": {
         "en": {
@@ -449,6 +753,22 @@
         }
       }
     },
+    "achv.food_fish.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feed dried fish for the first time"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第一次喂小鱼干"
+          }
+        }
+      }
+    },
     "achv.food_fish_20": {
       "localizations": {
         "en": {
@@ -461,6 +781,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "小鱼干爱好者"
+          }
+        }
+      }
+    },
+    "achv.food_fish_20.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feed 20 dried fish"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "累计喂 20 条小鱼干"
           }
         }
       }
@@ -513,6 +849,22 @@
         }
       }
     },
+    "achv.group.economy": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Economy"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "经济"
+          }
+        }
+      }
+    },
     "achv.group.food": {
       "localizations": {
         "en": {
@@ -545,6 +897,102 @@
         }
       }
     },
+    "achv.pets_2": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Two-pet home"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "双宠之家"
+          }
+        }
+      }
+    },
+    "achv.pets_2.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Own 2 pets at once"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同时拥有 2 只宠物"
+          }
+        }
+      }
+    },
+    "achv.pets_3": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Full house"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "热闹的家"
+          }
+        }
+      }
+    },
+    "achv.pets_3.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Own 3 pets at once"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同时拥有 3 只宠物"
+          }
+        }
+      }
+    },
+    "achv.play_100": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Great playmate"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好玩伴"
+          }
+        }
+      }
+    },
+    "achv.play_100.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play 100 times"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "累计玩耍 100 次"
+          }
+        }
+      }
+    },
     "achv.play_30": {
       "localizations": {
         "en": {
@@ -557,6 +1005,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "玩伴"
+          }
+        }
+      }
+    },
+    "achv.play_30.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play 30 times"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "累计玩耍 30 次"
+          }
+        }
+      }
+    },
+    "achv.play_300": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Best playmate"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最佳玩伴"
+          }
+        }
+      }
+    },
+    "achv.play_300.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play 300 times"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "累计玩耍 300 次"
+          }
+        }
+      }
+    },
+    "achv.rich_5000": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nest egg"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "小有积蓄"
+          }
+        }
+      }
+    },
+    "achv.rich_5000.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Earn 3,000 coins in total (starting funds don't count)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "累计赚取 3000 枚（启动金不算）"
           }
         }
       }
@@ -577,6 +1105,22 @@
         }
       }
     },
+    "achv.stage_adult.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pet reaches adulthood (day 7)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "宠物长到成年期（第 7 天）"
+          }
+        }
+      }
+    },
     "achv.stage_elder": {
       "localizations": {
         "en": {
@@ -589,6 +1133,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "老伙计"
+          }
+        }
+      }
+    },
+    "achv.stage_elder.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pet reaches elderhood (day 30)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "宠物长到老年期（第 30 天）"
           }
         }
       }
@@ -609,18 +1169,50 @@
         }
       }
     },
-    "achv.streak_15": {
+    "achv.stage_growing.desc": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Half a Month"
+            "value": "Pet reaches the growing stage (day 3)"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "半月同行"
+            "value": "宠物长到成长期（第 3 天）"
+          }
+        }
+      }
+    },
+    "achv.streak_15": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Half a month of care"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "照顾半月"
+          }
+        }
+      }
+    },
+    "achv.streak_15.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Care well for 15 days"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "累计 15 天把宠物照顾好"
           }
         }
       }
@@ -630,13 +1222,29 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Three Days"
+            "value": "Three days of care"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "三日之交"
+            "value": "照顾三天"
+          }
+        }
+      }
+    },
+    "achv.streak_3.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Care well for 3 days (daily average ≥60%)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "累计 3 天把宠物照顾好（当天三维平均 ≥60%）"
           }
         }
       }
@@ -646,13 +1254,29 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Full Month"
+            "value": "A month of care"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "满月"
+            "value": "照顾满月"
+          }
+        }
+      }
+    },
+    "achv.streak_30.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Care well for 30 days"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "累计 30 天把宠物照顾好"
           }
         }
       }
@@ -662,13 +1286,29 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "One Week"
+            "value": "A week of care"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "一周之约"
+            "value": "照顾一周"
+          }
+        }
+      }
+    },
+    "achv.streak_7.desc": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Care well for 7 days"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "累计 7 天把宠物照顾好"
           }
         }
       }

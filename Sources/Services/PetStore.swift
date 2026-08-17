@@ -135,8 +135,32 @@ final class PetStore {
             pet.streakDays = 1
             pet.lastStreakDay = now
         }
+        recordCareQuality(at: now)
         pet.lastSeenAt = now
         persist()
+    }
+
+    /// 记「今天照顾达标了吗」。
+    ///
+    /// **和连续天数分开。** `streakDays` 只要打开 app 就 +1 ——
+    /// 所以放养 30 天照样拿满 `streak_30`（2000 枚），
+    /// 时间型成就一度占全部成就金额的 61%，完全不看照顾质量。
+    ///
+    /// 这里按「当天三维平均 ≥ StateThreshold.wellCared」判定，
+    /// 同一天只记一次。达标日累计进 `wellCaredDays`，
+    /// `streak_*` 类成就改看这个数。
+    private func recordCareQuality(at now: Date) {
+        let cal = Calendar.current
+        // 同一天已经记过就跳过
+        if let last = pet.lastWellCaredDay,
+           cal.isDate(last, inSameDayAs: now) { return }
+
+        let avg = (pet.satiety(at: now) + pet.mood(at: now)
+                   + pet.hygiene(at: now)) / 3
+        guard avg >= StateThreshold.wellCared else { return }
+
+        pet.wellCaredDays = (pet.wellCaredDays ?? 0) + 1
+        pet.lastWellCaredDay = now
     }
 
     // MARK: - 奖励结算

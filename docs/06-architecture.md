@@ -88,7 +88,7 @@ public，是全方案的一半成本、80% 的实际收益）。上面修循环�
 |---|---|---|
 | `RewardRule` 协议 + `RewardEngine` | 加奖励规则不改核心逻辑 | 实现协议 + 注册进 `RewardEngine.default` |
 | `CoinLedger` + `CoinReason` | **金币变动的唯一入口**，账目可自检、流水可追溯 | 加玩法时加一个 `CoinReason` case，编译器强迫你归类收/支与额度 |
-| `AchievementRule` | 19 条成就是**同一类型的 19 个实例**，数据驱动 | 表里加一条，有 `streak()`/`counted()` 两个构造辅助 |
+| `AchievementRule` | 29 条成就是**同一类型的 29 个实例**，数据驱动 | 表里加一条，有 `cared()`/`counted()` 两个构造辅助 |
 | `PetPersistence` | 存档方式可替换（文件/内存），测试不碰磁盘 | 实现协议，注入 `PetStore(storage:)` |
 | `PetReminderScheduling` | 提醒实现可替换，测试不排真通知 | 实现协议，注入 `PetStore(reminders:)` |
 | `BreedComponents` | 品种立绘/属性面板/毛色选择三处共用 | 直接用 `BreedPortrait` / `BreedStatPanel` / `CoatPicker` |
@@ -168,7 +168,7 @@ public，是全方案的一半成本、80% 的实际收益）。上面修循环�
 |---|---|---|
 | 钱堆 | `EarningsView` | 余额、今日额度、收支构成、流水 |
 | ♥ 需求 | （只读） | 当前最紧急的需求，不可点 |
-| ★ | `AchievementsView` | 19 条成就与进度 |
+| ★ | `AchievementsView` | 29 条成就与进度，点一条看解锁条件 |
 | 店铺 | `ShopView` | 可购买品种 |
 | 爪印 | `PetsView` | 状态、起名、品种毛色、成长、陪伴记录 |
 | 齿轮 | `PetSettingsView` | **只有应用级偏好**：通知、语言、素材授权 |

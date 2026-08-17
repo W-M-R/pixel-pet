@@ -67,6 +67,19 @@ struct PetState: Codable, Equatable, Identifiable {
     var totalCleanCount: Int?
     /// 连续打开天数
     var streakDays: Int?
+
+    /// 「照顾达标」的累计天数。
+    ///
+    /// **和 `streakDays` 的区别**：后者只要打开 app 就 +1，
+    /// 所以放养 30 天照样能拿满 `streak_30`（2000 枚）——
+    /// 时间型成就曾占全部成就金额的 61%，完全不看照顾质量，
+    /// 这违反「照顾好宠物 = 赚得多」（docs/00-overview.md 第 5 条）。
+    ///
+    /// 达标定义见 `PetStore.markSeen`：当天三维平均 ≥ `wellCaredLevel`。
+    var wellCaredDays: Int?
+
+    /// 最近一次记为「照顾达标」的日期。用于同一天不重复计数。
+    var lastWellCaredDay: Date?
     /// 上次计入连续天数的日期（按天去重）
     var lastStreakDay: Date?
 
@@ -142,6 +155,8 @@ struct PetState: Codable, Equatable, Identifiable {
         self.totalCleanCount = 0
         self.streakDays = 1
         self.lastStreakDay = now
+        self.wellCaredDays = 0
+        self.lastWellCaredDay = nil
         self.triedBreeds = [breedID]
         self.triedColors = [colorIndex]
         self.foodCounts = [:]
@@ -158,7 +173,7 @@ struct PetState: Codable, Equatable, Identifiable {
         case id, breedID, species, colorIndex, name, bornAt
         case awakeUntil, lastSeenAt, lastFedAt, lastPlayedAt, lastCleanedAt
         case totalFeedCount, totalPlayCount, totalCleanCount
-        case streakDays, lastStreakDay
+        case streakDays, lastStreakDay, wellCaredDays, lastWellCaredDay
         case triedBreeds, triedColors, foodCounts
     }
 
@@ -190,6 +205,8 @@ struct PetState: Codable, Equatable, Identifiable {
         totalCleanCount = try c.decodeIfPresent(Int.self, forKey: .totalCleanCount)
         streakDays = try c.decodeIfPresent(Int.self, forKey: .streakDays)
         lastStreakDay = try c.decodeIfPresent(Date.self, forKey: .lastStreakDay)
+        wellCaredDays = try c.decodeIfPresent(Int.self, forKey: .wellCaredDays)
+        lastWellCaredDay = try c.decodeIfPresent(Date.self, forKey: .lastWellCaredDay)
         triedBreeds = try c.decodeIfPresent(Set<String>.self, forKey: .triedBreeds)
         triedColors = try c.decodeIfPresent(Set<Int>.self, forKey: .triedColors)
         foodCounts = try c.decodeIfPresent([String: Int].self, forKey: .foodCounts)
@@ -214,6 +231,8 @@ struct PetState: Codable, Equatable, Identifiable {
         try c.encodeIfPresent(totalCleanCount, forKey: .totalCleanCount)
         try c.encodeIfPresent(streakDays, forKey: .streakDays)
         try c.encodeIfPresent(lastStreakDay, forKey: .lastStreakDay)
+        try c.encodeIfPresent(wellCaredDays, forKey: .wellCaredDays)
+        try c.encodeIfPresent(lastWellCaredDay, forKey: .lastWellCaredDay)
         try c.encodeIfPresent(triedBreeds, forKey: .triedBreeds)
         try c.encodeIfPresent(triedColors, forKey: .triedColors)
         try c.encodeIfPresent(foodCounts, forKey: .foodCounts)

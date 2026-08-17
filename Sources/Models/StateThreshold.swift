@@ -24,6 +24,16 @@ enum StateThreshold {
 
     /// 把 0...1 的状态值映射成档位。
     ///
+    /// 「今天照顾得好」的门槛：三维平均 ≥ 0.6。
+    ///
+    /// 用来记 `PetState.wellCaredDays`，`streak_*` 类成就改看它 ——
+    /// 原来只要打开 app 就算一天，放养 30 天也能拿满 2000 枚。
+    ///
+    /// 0.6 是这样定的：目标节奏（4 次/天）下三维平均约 0.7-0.8，
+    /// 轻松达标；2 次/天约 0.5-0.6，勉强；1 次/天约 0.3，不达标。
+    /// 门槛定在 0.6 刚好把「放养」挡在外面而不惩罚正常玩家。
+    static let wellCared: Double = 0.6
+
     /// 分界点 0.25/0.5/0.8 —— 原本是台词描述在用的档位，最细的一套。
     static func level(_ value: Double) -> Level {
         if value < critical { return .critical }

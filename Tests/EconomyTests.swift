@@ -384,3 +384,175 @@ final class EconomyTests: XCTestCase {
         return income - cost
     }
 }
+
+/// 成就的平衡性。
+///
+/// 守的是 docs/00-overview.md 第 5 条：**照顾好宠物 = 赚得多**。
+/// 这条曾经被成就系统破坏 —— 时间型成就占全部金额的 61%，
+/// 而 `streak_*` 只看「打开 app 的天数」，放养 30 天照样拿满。
+final class AchievementBalanceTests: XCTestCase {
+
+    /// **连续型成就必须看照顾质量，不能只看天数。**
+    ///
+    /// 这是那个失衡的根因：只要每天点开 app 就 +1。
+    func testStreakAchievementsRequireGoodCare() {
+        let rules = AchievementRule.all.filter { $0.id.hasPrefix("streak_") }
+        XCTAssertFalse(rules.isEmpty)
+
+        var neglected = Fixture.pet(satiety: 0.1, mood: 0.1, hygiene: 0.1)
+        neglected.streakDays = 60          // 天天打开
+        neglected.wellCaredDays = 0        // 但从没照顾好
+        let wallet = PetWallet()
+
+        for r in rules {
+            XCTAssertFalse(r.condition(neglected, wallet),
+                           "\(r.id) 在放养 60 天时仍能达成 —— 又变回只看天数了")
+        }
+
+        var cared = neglected
+        cared.wellCaredDays = 60
+        for r in rules {
+            XCTAssertTrue(r.condition(cared, wallet),
+                          "\(r.id) 照顾达标 60 天却拿不到")
+        }
+    }
+
+    /// 时间型成就（纯时间流逝就能拿）占比不能过高。
+    ///
+    /// 阈值 25%：它们该是「陪伴的纪念」而非收入主力。
+    /// 曾经是 61%，导致放养 30 天和认真养 13 天都能买第二只。
+    func testTimeOnlyAchievementsAreMinorShareOfCoins() {
+        let timeOnly = AchievementRule.all.filter {
+            $0.id.hasPrefix("stage_") || $0.id == "age_100"
+        }
+        let total = AchievementRule.all.reduce(0) { $0 + $1.coins }
+        let timeSum = timeOnly.reduce(0) { $0 + $1.coins }
+        let share = Double(timeSum) / Double(total)
+
+        XCTAssertLessThan(share, 0.25,
+                          "纯时间型成就占了 \(Int(share * 100))% 的金币 —— 放养也能白拿")
+    }
+
+    /// 照料型（要真互动）应该是最大的一组
+    func testCareIsTheBiggestGroup() {
+        var byGroup: [AchievementRule.Group: Int] = [:]
+        for r in AchievementRule.all {
+            byGroup[r.group, default: 0] += r.coins
+        }
+        let care = byGroup[.care] ?? 0
+        for (g, sum) in byGroup where g != .care {
+            XCTAssertGreaterThan(care, sum,
+                                 "照料型(\(care)) 不该少于 \(g)(\(sum))")
+        }
+    }
+
+    /// 每条成就都要有名字和解锁条件说明
+    func testEveryAchievementHasNameAndDescription() {
+        for r in AchievementRule.all {
+            XCTAssertNotEqual(L(r.nameKey), r.nameKey,
+                              "\(r.id) 缺名字译文")
+            XCTAssertNotEqual(L(r.descKey), r.descKey,
+                              "\(r.id) 缺解锁条件说明（key: \(r.descKey)）")
+            XCTAssertFalse(L(r.descKey).isEmpty)
+        }
+    }
+
+    /// **名字不能重复。** 界面上两条同名成就分不清哪个是哪个。
+    ///
+    /// 抓到过一次：play_30 和 play_100 都叫「玩伴」。
+    func testAchievementNamesAreUnique() {
+        let names = AchievementRule.all.map { L($0.nameKey) }
+        let dupes = names.filter { n in names.filter { $0 == n }.count > 1 }
+        XCTAssertTrue(dupes.isEmpty, "重名成就：\(Set(dupes))")
+    }
+
+    /// id 不能重复 —— 重复会让 claimedRewards 判定串味
+    func testAchievementIDsAreUnique() {
+        let ids = AchievementRule.all.map(\.id)
+        XCTAssertEqual(Set(ids).count, ids.count,
+                       "有重复 id：\(ids.filter { id in ids.filter { $0 == id }.count > 1 })")
+    }
+
+    /// **刚开局不该白拿任何成就。**
+    ///
+    /// 这条抓到过两个真 bug：
+    /// 1. `all_high`（三维 ≥90%）—— 新宠物三维是满的，开局第一秒就达成
+    /// 2. `rich_5000`（存款 5000）—— 启动资金正好 5000
+    ///
+    /// 两条都是「用初始值当成就条件」，白送 800 枚而玩家什么都没做。
+    func testNoAchievementUnlocksAtOnboarding() {
+        let fresh = PetState(breedID: "cat", colorIndex: 0, name: "新")
+        let wallet = PetWallet()          // 含启动资金
+
+        let unlocked = AchievementRule.all.filter { $0.condition(fresh, wallet) }
+        XCTAssertTrue(unlocked.isEmpty,
+                      "开局白送了这些成就：\(unlocked.map(\.id))")
+    }
+
+    /// 经济型用累计赚取而非余额 —— 用余额的话玩家不敢花钱
+    func testEarningAchievementsUseTotalEarnedNotBalance() {
+        var w = PetWallet()
+        w.debugSetCoins(0)                 // 花光了
+        w.earn(60000, reason: .offlineCare)
+        w.spend(59000, reason: .breedPurchase)
+        let pet = Fixture.pet()
+
+        let earn = AchievementRule.all.filter { $0.id.hasPrefix("earn_") }
+        XCTAssertFalse(earn.isEmpty)
+        for r in earn {
+            XCTAssertTrue(r.condition(pet, w),
+                          "\(r.id) 因为余额被花掉就不算了 —— 该看 totalEarned")
+        }
+    }
+}
+
+/// 「照顾达标」的判定。
+@MainActor
+final class WellCaredDayTests: StoreTestCase {
+
+    /// 状态好 → 记一天
+    func testGoodCareCountsADay() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "T")
+        s.debugSetStats(satiety: 1, mood: 1, hygiene: 1)
+
+        var p = s.pet
+        p.lastWellCaredDay = nil
+        p.wellCaredDays = 0
+        s.debugSet(pet: p)
+
+        s.markSeen()
+        XCTAssertEqual(s.pet.wellCaredDays, 1)
+    }
+
+    /// 状态差 → 不记
+    func testPoorCareDoesNotCount() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "T")
+        s.debugSetStats(satiety: 0.1, mood: 0.1, hygiene: 0.1)
+
+        var p = s.pet
+        p.lastWellCaredDay = nil
+        p.wellCaredDays = 0
+        s.debugSet(pet: p)
+
+        s.markSeen()
+        XCTAssertEqual(s.pet.wellCaredDays, 0, "放养不该算达标")
+    }
+
+    /// 同一天只记一次 —— 否则反复开关 app 能刷满
+    func testSameDayCountsOnce() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "T")
+        s.debugSetStats(satiety: 1, mood: 1, hygiene: 1)
+
+        var p = s.pet
+        p.lastWellCaredDay = nil
+        p.wellCaredDays = 0
+        s.debugSet(pet: p)
+
+        for _ in 0..<10 { s.markSeen() }
+        XCTAssertEqual(s.pet.wellCaredDays, 1,
+                       "同一天记了多次 —— 反复开关 app 就能刷满")
+    }
+}
