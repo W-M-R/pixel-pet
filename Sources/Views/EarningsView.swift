@@ -40,6 +40,7 @@ struct EarningsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L("common.done")) { dismiss() }
+                        .accessibilityIdentifier(A11y.done)
                 }
             }
         }

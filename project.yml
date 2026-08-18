@@ -40,6 +40,31 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.wmr.pixelpet.tests
         GENERATE_INFOPLIST_FILE: YES
 
+  PixelPetUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+      # ⚠️ **共用同一份 identifier 常量。**
+      #
+      # UI 测试跑在独立进程里，拿不到 app target 的类型
+      # （XCUITest 是黑盒测试，不能 @testable import）。
+      # 两边各抄一份字符串是最容易腐烂的做法 —— 改一处忘一处，
+      # 测试会以「找不到元素」失败，而那个报错完全不提示真正的原因。
+      # 直接把常量文件也编进测试 target，这也是当初把它放在
+      # Core（不依赖任何业务类型）的理由。
+      - path: Sources/Core/Accessibility/A11y.swift
+    dependencies:
+      - target: PixelPet
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.wmr.pixelpet.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        # UI 测试要读 PetScene 的布局快照，那是 #if DEBUG 的。
+        # 用 Release 跑这个 target 会因为符号不存在而失败 ——
+        # 这是预期行为，不是 bug（见 A11y.sceneSnapshot 的注释）。
+        TEST_TARGET_NAME: PixelPet
+
   PixelPet:
     type: application
     platform: iOS

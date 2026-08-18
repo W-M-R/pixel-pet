@@ -1,31 +1,29 @@
 # 冒烟流程：从全新存档走完主路径。
 #
 # 抓的是「崩溃 / 白屏 / 点了没反应」这类硬问题 ——
-# 227 条单元测试覆盖逻辑层，但 SwiftUI 视图和手势一条都没覆盖。
-# 前几轮吃饭站位反复出错，根因就是这一层没有自动化。
+# 235 条单测覆盖逻辑层，但 SwiftUI 视图和手势一条都没覆盖。
+# 前几轮吃饭站位反复出错，根因就是这个盲区。
 #
-# ## 为什么状态栏用坐标而不是文案
+# ## 全部用 accessibilityIdentifier 定位
 #
-# 状态栏那五个按钮（金币/成就/商店/宠物/设置）是**纯图标无文案**，
-# 而且没有 accessibilityLabel —— 实测 `maestro hierarchy` 里
-# 它们的 accessibilityText 全是空字符串，所以只能用坐标点。
+# 第一版用的是**屏幕坐标**（`point: "91%,10%"`），因为状态栏那五个
+# 入口是纯图标按钮、当时没有任何无障碍标识。那个方案的代价是
+# 换机型就得重新量，而且坐标读起来完全不知道点的是什么。
 #
-# 起名输入框同理：它在层级里只有 hintText，没有 accessibilityText，
-# 用 `tapOn: "给它起个名字"` 会**匹配到页面标题**（同一句文案），
-# 结果键盘没打开、inputText 落空、名字存成空字符串。
-# 这个坑我踩过，所以这里用坐标 + 注释说明原因。
+# 现在按钮都加了 id（见 `Sources/Core/Accessibility/A11y.swift`），
+# 所以这里改成 id 定位 —— 与机型、语言、布局都解耦。
 #
-# 坐标来自 `maestro hierarchy` 实测（iPhone 17 Pro Max，440×956 点）：
-#   金币 55%  成就 72%  商店 78%  宠物 85%  设置 91%   （y 均为 10%）
+# 顺带说明为什么当初非用坐标不可，这也是加 id 的真正理由：
+# 那五个按钮在无障碍层级里 `accessibilityText` 全是空的，
+# **VoiceOver 用户只会听到「按钮」**，听不出是商店还是设置。
+# 那是个该修的缺陷，不只是测试不方便。
 #
-# ⚠️ 百分比只能用**整数** —— 写 "10.5%" 会让 Maestro 抛
-# NumberFormatException（它内部用 Integer.parseInt 解析）。
-# 图标实际在 y 89..111 点，10% = 95.6 点，落在带内。
-#   起名输入框 50%,30%
-# 换机型要重新量 —— 这是坐标方案的代价，等按钮加上
-# accessibilityIdentifier 之后就能换成 id 定位。
+# ## 两个 Maestro 坑（踩过，留个记录）
 #
-# 跑之前不用手动清存档，`clearState: true` 会清。
+# - **坐标百分比只能用整数**：写 `"91%,10.5%"` 会抛
+#   `NumberFormatException`（内部用 `Integer.parseInt` 解析）
+# - **`hideKeyboard` 在这个 app 上报「Couldn't hide the keyboard」** ——
+#   起名输入框用的是 `.submitLabel(.done)`，走 `pressKey: Enter` 才对
 #
 # 用法：maestro test .maestro/smoke.yml
 appId: com.wmr.pixelpet
@@ -35,98 +33,131 @@ appId: com.wmr.pixelpet
 
 # ---------- 开局引导 ----------
 - assertVisible: "选择你的宠物"
-- assertVisible: "小猫"
-- assertVisible: "小狗"
+- assertVisible:
+    id: "onboard.breed.cat"
+- assertVisible:
+    id: "onboard.breed.dog"
 - assertVisible: "5000"            # 启动资金要显示出来
 - takeScreenshot: .probe/smoke/01-pick-breed
 
 # 选小狗（默认是猫，选另一个才能验证「切换品种」这条路径）
-- tapOn: "小狗"
+- tapOn:
+    id: "onboard.breed.dog"
 - takeScreenshot: .probe/smoke/02-picked-dog
 
-- tapOn: "下一步"
-- assertVisible: "给它起个名字"
+- tapOn:
+    id: "onboard.next"
+- assertVisible:
+    id: "onboard.nameField"
 - takeScreenshot: .probe/smoke/03-name-step
 
 # 验证「返回」能回到选品种 —— 这条路径容易在改动中被弄坏
-- tapOn: "返回"
-- assertVisible: "选择你的宠物"
-- tapOn: "下一步"
-
-# ⚠️ 用坐标点输入框，不要用 tapOn 文案（会匹配到同名的页面标题）
 - tapOn:
-    point: "50%,30%"
+    id: "onboard.back"
+- assertVisible: "选择你的宠物"
+- tapOn:
+    id: "onboard.next"
+
+# 起名。用 id 而不是文案 —— 输入框的占位符和页面标题是**同一句**
+# （`settings.name.placeholder`），按文案点会命中标题，
+# 结果键盘没开、输入落空、名字存成空字符串。
+- tapOn:
+    id: "onboard.nameField"
 - inputText: "Rex"
-# ⚠️ 不要用 hideKeyboard —— 实测报「Couldn't hide the keyboard」。
-# 输入框用的是 `.submitLabel(.done)`，走回车提交才是它的设计路径。
 - pressKey: Enter
 - takeScreenshot: .probe/smoke/04-named
 
-- tapOn: "开始养育"
-- assertNotVisible: "开始养育"
-# 名字要出现在主页状态栏 —— 这同时验证了起名真的存进去了
+- tapOn:
+    id: "onboard.next"
+- assertNotVisible:
+    id: "onboard.nameField"
+# 名字要出现在主页 —— 这同时验证了起名真的存进去了
 - assertVisible: "Rex"
 - takeScreenshot: .probe/smoke/05-home
 
 # ---------- 主页三个交互 ----------
-- assertVisible: "喂食"
-- assertVisible: "玩耍"
-- assertVisible: "洗澡"
+- assertVisible:
+    id: "action.feed"
+- assertVisible:
+    id: "action.play"
+- assertVisible:
+    id: "action.clean"
+- assertVisible:
+    id: "home.need"        # 当前需求图标（VoiceOver 要能读出来）
 
 # 喂食走食物选择弹窗
-- tapOn: "喂食"
+- tapOn:
+    id: "action.feed"
 - assertVisible: "喂点什么？"
 - takeScreenshot: .probe/smoke/06-food-picker
-- tapOn: "普通粮"
+- tapOn:
+    id: "food.kibble"
 - takeScreenshot: .probe/smoke/07-after-feed
 
-# 弹窗可能自动关，也可能留着 —— 两种都接受，但最终要回主页
-- runFlow:
-    when:
-      visible: "完成"
-    commands:
-      - tapOn: "完成"
-- assertVisible: "玩耍"
+# 选完食物 sheet 必定自动关（`FoodPickerView.row` 里直接调 `dismiss()`）。
+#
+# ⚠️ 这里曾写成 `runFlow: when: visible: common.done` 来「兼容两种情况」，
+# 但那个情况根本不存在 —— 而条件块本身把整个流程挂死了
+# （跑到这一步就不动，等到看门狗超时）。
+# 为不可能发生的分支加防御，代价是流程卡住且没有任何报错。
+- assertNotVisible:
+    id: "common.done"
+- assertVisible:
+    id: "action.play"
 
-- tapOn: "玩耍"
+- tapOn:
+    id: "action.play"
 - takeScreenshot: .probe/smoke/08-after-play
 
-- tapOn: "洗澡"
+- tapOn:
+    id: "action.clean"
 - takeScreenshot: .probe/smoke/09-after-clean
-- assertVisible: "喂食"           # 交互后还在主页，没崩
+- assertVisible:
+    id: "action.feed"      # 交互后还在主页，没崩
 
 # ---------- 五个页面能开能关 ----------
 - tapOn:
-    point: "91%,10%"            # 设置
-- assertVisible: "完成"
+    id: "home.settings"
+- assertVisible:
+    id: "common.done"
 - takeScreenshot: .probe/smoke/10-settings
-- tapOn: "完成"
+- tapOn:
+    id: "common.done"
 
 - tapOn:
-    point: "85%,10%"            # 宠物
-- assertVisible: "完成"
+    id: "home.pets"
+- assertVisible:
+    id: "common.done"
 - takeScreenshot: .probe/smoke/11-pets
-- tapOn: "完成"
+- tapOn:
+    id: "common.done"
 
 - tapOn:
-    point: "78%,10%"            # 商店
-- assertVisible: "完成"
+    id: "home.shop"
+- assertVisible:
+    id: "common.done"
 - takeScreenshot: .probe/smoke/12-shop
-- tapOn: "完成"
+- tapOn:
+    id: "common.done"
 
 - tapOn:
-    point: "72%,10%"            # 成就
-- assertVisible: "完成"
+    id: "home.achievements"
+- assertVisible:
+    id: "common.done"
 - takeScreenshot: .probe/smoke/13-achievements
-- tapOn: "完成"
+- tapOn:
+    id: "common.done"
 
 - tapOn:
-    point: "55%,10%"            # 金币明细
-- assertVisible: "完成"
+    id: "home.coins"
+- assertVisible:
+    id: "common.done"
 - takeScreenshot: .probe/smoke/14-earnings
-- tapOn: "完成"
+- tapOn:
+    id: "common.done"
 
 # ---------- 收尾 ----------
-- assertVisible: "喂食"
+- assertVisible:
+    id: "action.feed"
 - assertVisible: "Rex"
 - takeScreenshot: .probe/smoke/15-back-home

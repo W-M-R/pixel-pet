@@ -47,6 +47,7 @@ struct PetsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L("common.done")) { commitName(); dismiss() }
+                        .accessibilityIdentifier(A11y.done)
                         .font(Pixel.mono(Pixel.bodySize, .semibold))
                         .foregroundStyle(Pixel.coin.color)
                 }

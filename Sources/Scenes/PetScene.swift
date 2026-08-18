@@ -1016,4 +1016,68 @@ final class PetScene: SKScene {
             self?.isStartled = false
         }
     }
+
+    #if DEBUG
+    // MARK: - 布局快照（仅测试用）
+
+    /// 把场景里的关键位置导出成一行文本，给 UI 测试断言用。
+    ///
+    /// ## 为什么需要它
+    ///
+    /// SpriteKit 场景对 XCUI 是**黑盒** —— 宠物、家具、碗都活在
+    /// 一个 `SpriteView` 里，XCUI 只看到一个容器，读不到里面的位置。
+    ///
+    /// 我先试过扫屏幕像素来判断「吃饭时宠物围到碗边了吗」，
+    /// 为它调了 5 轮阈值都不稳：宠物会挡住碗（实测只露 61px）、
+    /// 成就气泡会盖住宠物、没被派活的宠物在自由游荡。
+    /// 那是**方法不对**的信号 —— 位置这种精确的事，
+    /// 该问场景本身，不该靠数像素反推。
+    ///
+    /// 导出的是**归一化比例**而非绝对坐标，这样断言不绑定机型尺寸。
+    ///
+    /// ## 只在 DEBUG
+    ///
+    /// 和调试面板同一个原则（见 `project.yml` 的
+    /// `SWIFT_ACTIVE_COMPILATION_CONDITIONS`）：
+    /// Release 产物里连符号都不存在，比运行时开关更彻底。
+    var debugLayoutSnapshot: String {
+        guard size.width > 0, size.height > 0 else { return "size=0" }
+
+        func ratio(_ p: CGPoint) -> String {
+            String(format: "%.3f,%.3f", p.x / size.width, p.y / size.height)
+        }
+
+        var parts: [String] = []
+        parts.append("size=\(Int(size.width))x\(Int(size.height))")
+
+        if let bowl = bowlNode {
+            let r = bowl.calculateAccumulatedFrame()
+            parts.append("bowl=" + ratio(CGPoint(x: r.midX, y: r.midY)))
+            parts.append(String(format: "bowlW=%.3f", r.width / size.width))
+        } else {
+            parts.append("bowl=none")
+        }
+
+        // 宠物按 id 排序 —— 否则 actors 的顺序随 sync 变化，
+        // 断言会因为「同样的布局、不同的顺序」假失败。
+        for a in actors.sorted(by: { $0.petID < $1.petID }) {
+            let tag = a.isEating ? "eat" : behaviorTag(a.behavior)
+            parts.append("pet[\(a.petID.prefix(4))]="
+                         + ratio(a.node.position) + ":\(tag)")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private func behaviorTag(_ b: PetActor.Behavior) -> String {
+        switch b {
+        case .idle:          return "idle"
+        case .wandering:     return "walk"
+        case .following:     return "follow"
+        case .eating:        return "eat"
+        case .walkingToBowl: return "toBowl"
+        case .startled:      return "startled"
+        case .sleeping:      return "sleep"
+        }
+    }
+    #endif
 }

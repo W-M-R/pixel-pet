@@ -173,9 +173,16 @@ def maestro(commands, wait=0.0):
 
 
 def feed_now():
-    """点「喂食」→ 选「普通粮」，让所有宠物开始走向碗。"""
-    maestro('- tapOn: "喂食"\n'
-            '- tapOn: "普通粮"\n')
+    """
+    点「喂食」→ 选「普通粮」，让所有宠物开始走向碗。
+
+    用 accessibilityIdentifier 定位，不用文案 ——
+    文案会随语言变，而「普通粮」那一行还带价格
+    （实测 label 是「普通粮、约 6.3 小时、35」，价格随饱食度浮动）。
+    id 见 `Sources/Core/Accessibility/A11y.swift`。
+    """
+    maestro('- tapOn:\n    id: "action.feed"\n'
+            '- tapOn:\n    id: "food.kibble"\n')
 
 
 def settle(name, colors, tries=14, interval=1.0, tol=6):

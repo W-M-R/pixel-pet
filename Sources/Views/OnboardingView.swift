@@ -122,6 +122,9 @@ struct OnboardingView: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier(A11y.breedCard(b.id))
+        .accessibilityLabel(Text(verbatim: "\(L(b.nameKey))，\(L(b.traitKey))"))
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 
     /// 属性对比面板。实现在 `BreedStatPanel`（商店也用）。
@@ -135,6 +138,10 @@ struct OnboardingView: View {
                           size: Pixel.u(24))
 
             TextField(L("settings.name.placeholder"), text: $draftName)
+                // ⚠️ 这个 id 尤其必要：占位符和页面标题是**同一句文案**，
+                // 用文案定位会命中标题，导致键盘没打开、输入落空、
+                // 名字存成空字符串（我在 Maestro 上踩过这个坑）。
+                .accessibilityIdentifier(A11y.nameField)
                 .font(Pixel.mono(Pixel.titleSize))
                 .foregroundStyle(Pixel.text.color)
                 .multilineTextAlignment(.center)
@@ -186,6 +193,7 @@ struct OnboardingView: View {
                                            dark: Pixel.buttonDark))
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier(A11y.onboardNext)
 
             if step == .name {
                 Button {
@@ -196,6 +204,7 @@ struct OnboardingView: View {
                         .foregroundStyle(Pixel.textDim.color)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier(A11y.onboardBack)
             }
         }
     }

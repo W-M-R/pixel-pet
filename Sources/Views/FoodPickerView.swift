@@ -59,6 +59,7 @@ struct FoodPickerView: View {
                                            dark: Pixel.buttonDark))
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier(A11y.done)
 
             Spacer()
 
@@ -147,6 +148,10 @@ struct FoodPickerView: View {
             .opacity(affordable ? 1 : 0.6)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier(A11y.food(food.id))
+        // 买不起时读出原因 —— 光是「变暗」对 VoiceOver 用户不存在
+        .accessibilityHint(Text(verbatim:
+            affordable ? "" : L("food.cannot_afford")))
     }
 
     /// 价格标签。按量计价，所以传算好的 price 而非 FoodItem。

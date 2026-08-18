@@ -11,6 +11,11 @@ struct PetHomeView: View {
     /// 读一次存进 @State —— 直接读 store.needsOnboarding 会在
     /// completeOnboarding 后立刻翻转，导致 sheet 关闭动画被打断。
     @State private var needsOnboarding = false
+    #if DEBUG
+    /// 场景布局快照。定时刷新 —— SpriteKit 每帧在动，
+    /// 而 SwiftUI 不知道场景内部变了，需要主动拉。
+    @State private var sceneSnapshot = ""
+    #endif
     @State private var showSettings = false
     @State private var showEarnings = false
     @State private var showPets = false
@@ -34,6 +39,23 @@ struct PetHomeView: View {
 
             SpriteView(scene: scene, options: [.allowsTransparency])
                 .ignoresSafeArea()
+
+            #if DEBUG
+            // 场景布局快照的载体。
+            //
+            // SpriteKit 场景对 XCUI 是**黑盒** —— 里面的宠物和家具
+            // 读不到位置。把关键坐标导出成文本挂在这里，
+            // UI 测试就能确定性地断言「吃饭时宠物围到碗边了吗」，
+            // 不用去扫屏幕像素（那个方案调了 5 轮阈值都不稳）。
+            //
+            // 尺寸 1×1 且透明 —— 不影响画面，也挡不住手势。
+            // Release 不编译，正式版没有这个元素。
+            Color.clear
+                .frame(width: 1, height: 1)
+                .accessibilityIdentifier(A11y.sceneSnapshot)
+                .accessibilityLabel(Text(verbatim: sceneSnapshot))
+                .allowsHitTesting(false)
+            #endif
 
             VStack(spacing: 0) {
                 statusBar
@@ -84,6 +106,18 @@ struct PetHomeView: View {
             // 曾经用「距上次玩耍的时间」判断，导致一摸就睡（见 PetState.isDrowsy）。
             scene.setSleeping(store.pet.isDrowsy(at: store.tick))
         }
+        #if DEBUG
+        // 定时把场景布局拉出来。SpriteKit 每帧在动，而 SwiftUI
+        // 不知道场景内部变了 —— 不主动拉的话快照永远是空的。
+        // 0.4 秒够 UI 测试用（宠物走到碗边要好几秒），
+        // 又不至于让 SwiftUI 一直重绘。
+        .task {
+            while !Task.isCancelled {
+                sceneSnapshot = scene.debugLayoutSnapshot
+                try? await Task.sleep(for: .milliseconds(400))
+            }
+        }
+        #endif
         .onChange(of: store.pets.count) { _, _ in syncScenePet() }
         .onChange(of: store.selectedPetID) { _, _ in syncScenePet() }
         .onChange(of: store.pet.breedID) { _, _ in syncScenePet() }
@@ -212,6 +246,11 @@ struct PetHomeView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier(A11y.coins)
+                // 读出「收支明细，1000 枚」而不是光一个数字 ——
+                // 数字本身听不出是金币还是别的计数
+                .accessibilityLabel(Text(verbatim:
+                    "\(L("earn.title"))，\(store.wallet.coins)"))
 
                 // 当前最紧急的需求。
                 // 曾经把它叠在爪印右下角当角标 —— 16px 图标上再压一个
@@ -219,6 +258,9 @@ struct PetHomeView: View {
                 // 像素图标没有那个空间，老实并排放。
                 PixelIconView(icon: .forNeed(store.pet.dominantNeed(at: now)),
                               size: Pixel.u(5))
+                    .accessibilityIdentifier(A11y.dominantNeed)
+                    .accessibilityLabel(Text(verbatim:
+                        L(store.pet.dominantNeed(at: now).messageKey)))
 
                 // 成就 —— 之前埋在设置页底部（齿轮 → 滚到底），
                 // 而它是主要的金币来源（30 天内可得 7050 枚），该在主页。
@@ -226,18 +268,24 @@ struct PetHomeView: View {
                     PixelIconView(icon: .star, size: Pixel.u(5))
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier(A11y.achievements)
+                .accessibilityLabel(Text(verbatim: L("achv.title")))
 
                 // 商店
                 Button { showShop = true } label: {
                     PixelIconView(icon: .shop, size: Pixel.u(5))
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier(A11y.shop)
+                .accessibilityLabel(Text(verbatim: L("shop.title")))
 
                 // 宠物页 —— 状态、起名、品种毛色、成长、陪伴记录
                 Button { showPets = true } label: {
                     PixelIconView(icon: .paw, size: Pixel.u(5.5))
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier(A11y.pets)
+                .accessibilityLabel(Text(verbatim: L("pets.title")))
 
                 Button {
                     showSettings = true
@@ -247,6 +295,8 @@ struct PetHomeView: View {
                     // 8 齿在 16px 下会糊成圆，所以画 4 齿 + 大孔。
                     PixelIconView(icon: .gear, size: Pixel.u(5))
                 }
+                .accessibilityIdentifier(A11y.settings)
+                .accessibilityLabel(Text(verbatim: L("settings.title")))
                 #if DEBUG
                 // 长按进调试面板 —— 保留时间快进能力，但不占主界面。
                 // Release 不编译，正式版没有这个入口。
@@ -277,11 +327,13 @@ struct PetHomeView: View {
 
     private var actionBar: some View {
         HStack(spacing: Pixel.u(2)) {
-            ActionButton(titleKey: "action.feed", icon: .meat) {
+            ActionButton(titleKey: "action.feed", icon: .meat,
+                         a11yID: A11y.feed) {
                 showFood = true
             }
             ForEach(Interaction.all) { act in
-                ActionButton(titleKey: act.titleKey, icon: act.icon) {
+                ActionButton(titleKey: act.titleKey, icon: act.icon,
+                             a11yID: A11y.action(act.id)) {
                     store.perform(act.effect)
                     scene.playAnimation(for: act.id)
                     say(act.trigger, delay: act.sayDelay)
@@ -315,6 +367,9 @@ private struct StatBar: View {
 private struct ActionButton: View {
     let titleKey: String
     let icon: PixelIcon
+    /// 无障碍标识。图标按钮本身有文字标签，所以不用额外加 label，
+    /// 但 UI 测试需要一个**不随语言变化**的定位符。
+    let a11yID: String
     let action: () -> Void
 
     @State private var pressed = false
@@ -336,6 +391,7 @@ private struct ActionButton: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier(a11yID)
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in pressed = true }
