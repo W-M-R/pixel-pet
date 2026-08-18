@@ -406,6 +406,7 @@ final class PetStore {
         guard wallet.spend(breed.price, reason: .starterPet,
                            note: breed.id) else { return false }
         wallet.ownedBreeds.insert(breed.id)
+        wallet.triedColors.insert(colorIndex)     // 收藏成就按玩家累计
         wallet.hasCompletedOnboarding = true
 
         // 开局那只直接改写 pets[0]（init 造的占位），
@@ -415,10 +416,20 @@ final class PetStore {
         first.colorIndex = colorIndex
         first.name = String(name.trimmingCharacters(in: .whitespacesAndNewlines)
                                 .prefix(12))
-        var breeds = first.triedBreeds ?? []; breeds.insert(breed.id)
-        first.triedBreeds = breeds
-        var colors = first.triedColors ?? []; colors.insert(colorIndex)
-        first.triedColors = colors
+        // ⚠️ **重置而不是并入。**
+        //
+        // `pets[0]` 是 init 造的占位猫（`PetState.init` 里
+        // `triedBreeds = ["cat"]`）。原来这里是
+        // `first.triedBreeds ?? []` 再 insert，于是选狗开局会得到
+        // `["cat", "dog"]` —— 而「换个伙伴」成就（breed_2）的判定就是
+        // `triedBreeds.count >= 2`，**开局立刻白送 300 枚**。
+        //
+        // 后果还不对称：选狗送 300，选猫不送（`["cat"]` 并进去还是它自己）。
+        // 同一个开局动作，选哪个品种决定送不送钱。
+        //
+        // 玩家此刻只养过这一只，所以「试过的品种/毛色」就该只有它。
+        first.triedBreeds = [breed.id]
+        first.triedColors = [colorIndex]
         pets[0] = first
         selectedPetID = first.id
         wallet.selectedPetID = first.id
@@ -439,6 +450,7 @@ final class PetStore {
         guard wallet.spend(breed.price, reason: .breedPurchase,
                            note: breed.id) else { return false }
         wallet.ownedBreeds.insert(breed.id)
+        wallet.triedColors.insert(colorIndex)     // 收藏成就按玩家累计
 
         var newPet = PetState(breedID: breed.id, colorIndex: colorIndex, name: "")
         newPet.triedBreeds = [breed.id]

@@ -1118,3 +1118,162 @@ final class WellCaredAllPetsTests: StoreTestCase {
         XCTAssertEqual(s.pets[1].wellCaredDays, 0, "放养的那只不该算达标")
     }
 }
+
+/// 开局不该白送成就。
+///
+/// 冒烟截图抓到的：选小狗开局后金币是 1300 而不是 1000（5000−4000），
+/// 且弹出「达成『换个伙伴』+300」—— 玩家只养过一只宠物。
+///
+/// 根因：`PetStore.init` 造的占位宠物是猫（`PetState.init` 里
+/// `triedBreeds = ["cat"]`），而 `completeOnboarding` 原来是
+/// `first.triedBreeds ?? []` 再 insert，选狗就得到 `["cat","dog"]`，
+/// 直接满足 breed_2 的 `count >= 2`。
+///
+/// 单元测试和 Maestro 断言都没抓到：前者没断言开局后的余额，
+/// 后者只验证「界面没崩」。是**截图里的数字**露出来的。
+@MainActor
+final class OnboardingNoFreeAchievementTests: StoreTestCase {
+
+    /// 选狗开局后余额应该正好是 5000 − 4000
+    func testDogOnboardingDoesNotGrantBreedAchievement() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "dog", colorIndex: 0, name: "Rex")
+
+        XCTAssertEqual(s.pet.triedBreeds, ["dog"],
+                       "开局只养过狗，triedBreeds 不该含占位猫留下的 cat")
+        XCTAssertEqual(s.wallet.coins,
+                       PetWallet.initialCoins - PetBreed.dog.price,
+                       "开局余额多出来了 —— 白送了成就？")
+        XCTAssertFalse(s.wallet.claimedRewards.contains("breed_2"),
+                       "只养过一只就拿到「换个伙伴」")
+    }
+
+    /// 选猫也一样（原来选猫恰好没这个 bug，锁住免得改回去）
+    func testCatOnboardingMatchesDog() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "Mimi")
+
+        XCTAssertEqual(s.pet.triedBreeds, ["cat"])
+        XCTAssertEqual(s.wallet.coins,
+                       PetWallet.initialCoins - PetBreed.cat.price)
+        XCTAssertFalse(s.wallet.claimedRewards.contains("breed_2"))
+    }
+
+    /// **两个品种的开局余额必须一样。**
+    ///
+    /// 这是最能说明问题的断言：原来选狗 1300、选猫 1000，
+    /// 同一个动作因为品种不同送不送钱。
+    func testOnboardingBalanceIsBreedIndependent() {
+        let a = makeStore()
+        a.completeOnboarding(breedID: "cat", colorIndex: 0, name: "A")
+
+        let b = Fixture.store()          // 独立存档，模拟另一台设备的首启
+        b.completeOnboarding(breedID: "dog", colorIndex: 0, name: "B")
+
+        XCTAssertEqual(a.wallet.coins, b.wallet.coins,
+                       "选猫和选狗开局后余额不同 —— 有一边白拿了成就")
+    }
+
+    /// 真买第二只时「换个伙伴」才该达成
+    func testBreedAchievementStillWorksOnRealSecondPet() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "A")
+        var w = s.wallet
+        w.debugSetCoins(20000)
+        s.debugSet(wallet: w)
+
+        s.purchase(.dog)
+        s.settleRewards()
+
+        XCTAssertTrue(s.wallet.claimedRewards.contains("breed_2"),
+                      "真的养了两个品种，这个成就该给")
+    }
+}
+
+/// 收藏成就必须**可达**。
+///
+/// 这组测试是从一个连环 bug 里长出来的：
+///
+/// 1. 冒烟截图发现选狗开局余额 1300 而非 1000，多了「换个伙伴」的 300
+/// 2. 根因是 `completeOnboarding` 把占位猫的 `["cat"]` 并进玩家选的品种
+/// 3. 修掉泄漏后 `testBreedAchievementStillWorksOnRealSecondPet` 失败 ——
+///    暴露出 breed_2 / color_4 **本来就永远拿不到**
+/// 4. 因为品种和毛色创建时定死，单只宠物的 tried* 永远只有 1 个
+///
+/// 一个 bug（泄漏）掩盖了另一个 bug（不可达）。
+/// 所以除了「不白送」，还必须锁住「真做到了要给」。
+@MainActor
+final class CollectionAchievementReachableTests: StoreTestCase {
+
+    /// 养第二个品种 → breed_2 该达成
+    func testSecondBreedIsReachable() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "A")
+        var w = s.wallet
+        w.debugSetCoins(20000)
+        s.debugSet(wallet: w)
+
+        XCTAssertFalse(s.wallet.claimedRewards.contains("breed_2"),
+                       "只有一个品种时不该给")
+
+        s.purchase(.dog)
+        s.settleRewards()
+
+        XCTAssertTrue(s.wallet.claimedRewards.contains("breed_2"),
+                      "养了两个品种还拿不到 —— 这条成就不可达")
+    }
+
+    /// 集齐四种毛色 → color_4 该达成
+    ///
+    /// 毛色是玩家级累计（钱包），不是单只属性 ——
+    /// 因为一只宠物的毛色创建时就定死，不能换。
+    func testFourColorsIsReachable() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 0, name: "A")
+        var w = s.wallet
+        w.debugSetCoins(99999)
+        s.debugSet(wallet: w)
+
+        s.purchase(.cat, colorIndex: 1)
+        s.purchase(.cat, colorIndex: 2)
+        XCTAssertFalse(s.wallet.claimedRewards.contains("color_4"),
+                       "才 3 种毛色，不该给")
+
+        s.purchase(.cat, colorIndex: 3)
+        s.settleRewards()
+
+        XCTAssertEqual(s.wallet.triedColors, [0, 1, 2, 3])
+        XCTAssertTrue(s.wallet.claimedRewards.contains("color_4"),
+                      "集齐四色还拿不到 —— 这条成就不可达")
+    }
+
+    /// 同一个毛色买多只不该重复计数
+    func testSameColorDoesNotDoubleCount() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 2, name: "A")
+        var w = s.wallet
+        w.debugSetCoins(99999)
+        s.debugSet(wallet: w)
+
+        s.purchase(.dog, colorIndex: 2)
+        s.purchase(.cat, colorIndex: 2)
+
+        XCTAssertEqual(s.wallet.triedColors, [2], "同色买三只只算一种")
+        XCTAssertFalse(s.wallet.claimedRewards.contains("color_4"))
+    }
+
+    /// 收藏进度要能跨重启保留
+    func testCollectionSurvivesRestart() {
+        let s = makeStore()
+        s.completeOnboarding(breedID: "cat", colorIndex: 1, name: "A")
+        var w = s.wallet
+        w.debugSetCoins(20000)
+        s.debugSet(wallet: w)
+        s.purchase(.dog, colorIndex: 3)
+
+        let again = makeStore()
+        XCTAssertEqual(again.wallet.triedColors, [1, 3],
+                       "毛色收藏没落盘")
+        XCTAssertEqual(again.wallet.ownedBreeds, ["cat", "dog"])
+    }
+}

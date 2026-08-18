@@ -224,10 +224,20 @@ struct AchievementRule: RewardRule {
 
     /// 收藏（4 条）。多宠玩法带来的新维度。
     static let collection: [AchievementRule] = [
+        // ⚠️ 这两条读**钱包**，不是单只宠物。
+        //
+        // 品种和毛色在创建宠物时定死（`purchase` 的注释：「毛色在购买时
+        // 定死，之后不能改」），所以单只的 `triedBreeds` / `triedColors`
+        // 永远只有它自己那一个 —— 按单只判定的话这两条**永远拿不到**。
+        //
+        // 曾经它们看起来能达成，靠的是一个 bug：`completeOnboarding` 把
+        // 占位猫的 `["cat"]` 并进了玩家选的品种，选狗就凑成 2 个。
+        // 那导致选狗开局白送 300 枚而选猫不送。修掉泄漏后这两条就
+        // 暴露为不可达 —— 一个 bug 掩盖了另一个。
         .counted("breed_2", key: "achv.breed_2", coins: 300, target: 2, group: .collection,
-                 value: { p, _ in p.triedBreeds?.count ?? 1 }),
+                 value: { _, w in w.ownedBreeds.count }),
         .counted("color_4", key: "achv.color_4", coins: 400, target: 4, group: .collection,
-                 value: { p, _ in p.triedColors?.count ?? 1 }),
+                 value: { _, w in w.triedColors.count }),
         // 同时养几只。`ownedBreeds` 是「买过的品种」，
         // 而真正的宠物数量在 PetStore.pets —— 钱包里记不到，
         // 所以用买过的品种数近似（每买一次就多一只）。

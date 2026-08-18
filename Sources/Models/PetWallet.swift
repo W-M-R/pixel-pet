@@ -57,6 +57,16 @@ struct PetWallet: Codable, Equatable {
     /// 家具是**一次性解锁**（买了就摆在房间里，再买没有意义）。
     var ownedFurniture: Set<String>
 
+    /// 试过的毛色（跨宠物累计）。
+    ///
+    /// **「收藏」是玩家级的事实，不是单只宠物的属性。**
+    /// 品种和毛色在创建宠物时就定死（不能换），所以单只的
+    /// `PetState.triedColors` 永远只有它自己那一个 ——
+    /// 拿它判定「试过 4 种毛色」永远达不成。
+    ///
+    /// 品种维度用已有的 `ownedBreeds`，毛色维度用这个。
+    var triedColors: Set<Int>
+
     /// 当前选中哪只宠物。
     ///
     /// **必须落盘。** 喂食/玩耍/洗澡三个按钮、状态栏、台词全部作用于
@@ -104,6 +114,7 @@ struct PetWallet: Codable, Equatable {
         claimedRewards = []
         ownedBreeds = []
         ownedFurniture = []
+        triedColors = []
         selectedPetID = nil
         hasCompletedOnboarding = false
     }
@@ -247,7 +258,7 @@ struct PetWallet: Codable, Equatable {
         case coins, lastCollectedAt, boostUntil, totalEarned
         case todayEarned, todayEarnedByPet, lastEarnDate, claimedRewards
         case ownedBreeds, ownedFurniture, hasCompletedOnboarding
-        case selectedPetID
+        case selectedPetID, triedColors
         case ledger
     }
 
@@ -279,6 +290,7 @@ struct PetWallet: Codable, Equatable {
         ownedFurniture = try c.decodeIfPresent(Set<String>.self,
                                                forKey: .ownedFurniture) ?? []
         selectedPetID = try c.decodeIfPresent(String.self, forKey: .selectedPetID)
+        triedColors = try c.decodeIfPresent(Set<Int>.self, forKey: .triedColors) ?? []
         // 旧存档没有这个字段。如果已经有宠物在养（钱包被用过），
         // 视为已完成开局，不该把老用户拉回选宠界面。
         if let done = try c.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) {
@@ -307,6 +319,7 @@ struct PetWallet: Codable, Equatable {
         try c.encode(ownedBreeds, forKey: .ownedBreeds)
         try c.encode(ownedFurniture, forKey: .ownedFurniture)
         try c.encodeIfPresent(selectedPetID, forKey: .selectedPetID)
+        try c.encode(triedColors, forKey: .triedColors)
         try c.encode(hasCompletedOnboarding, forKey: .hasCompletedOnboarding)
     }
 }
