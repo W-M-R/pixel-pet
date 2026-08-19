@@ -152,7 +152,7 @@ struct ShopView: View {
                         .foregroundStyle(Pixel.text.color)
                     // 碗写容量，装饰写「纯装饰」—— 让「有没有用」一眼可见
                     Text(verbatim: item.isBowl
-                         ? String(format: L("furn.slots"), item.feedSlots)
+                         ? L("furn.slots", item.feedSlots)   // 复数变体，见 xcstrings
                          : L("furn.decor_only"))
                         .font(Pixel.mono(Pixel.labelSize))
                         .foregroundStyle(item.isBowl ? Pixel.satiety.color

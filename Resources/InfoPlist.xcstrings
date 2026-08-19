@@ -1,0 +1,258 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "CFBundleDisplayName": {
+      "comment": "主屏图标下的名字。英文为兜底，中文系统显示中文名。",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PixelPet"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "像素小宠"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "像素小寵"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ピクセルペット"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "픽셀펫"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PixelPet"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PixelPet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PixelPet"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PixelPet"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PixelPet"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PixelPet"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PixelPet"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PixelPet"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PixelPet"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PixelPet"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PixelPet"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PixelPet"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PixelPet"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PixelPet"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PixelPet"
+          }
+        }
+      }
+    },
+    "NSUserNotificationsUsageDescription": {
+      "comment": "通知权限弹窗文案。基准英文在 project.yml，这里分语言覆盖。",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Get a nudge when your pet is hungry or bored."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启后，宠物饿了或无聊时会提醒你。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟後，寵物餓了或無聊時會提醒你。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ペットがお腹をすかせたり退屈したときにお知らせします。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "펫이 배고프거나 심심할 때 알려 드려요."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erhalte einen Hinweis, wenn dein Tier hungrig oder gelangweilt ist."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reçois un petit rappel quand ton animal a faim ou s’ennuie."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recibe un aviso cuando tu mascota tenga hambre o se aburra."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ricevi un promemoria quando il tuo animale ha fame o si annoia."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Receba um aviso quando seu bichinho estiver com fome ou sem graça."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Напомним, когда питомец голоден или скучает."
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ننبّهك عندما يجوع حيوانك أو يضجر."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "जब आपका साथी भूखा हो या बोर हो, तब सूचना पाएँ।"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "รับแจ้งเตือนเมื่อสัตว์เลี้ยงหิวหรือเบื่อ"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dapat pemberitahuan saat hewanmu lapar atau bosan."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dostunuz acıktığında veya sıkıldığında haber alın."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Krijg een berichtje als je dier honger heeft of zich verveelt."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Få en påminnelse när ditt djur är hungrigt eller uttråkat."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otrzymaj przypomnienie, gdy zwierzak jest głodny lub znudzony."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nhận thông báo khi thú nuôi của bạn đói hoặc buồn."
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

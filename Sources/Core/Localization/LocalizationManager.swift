@@ -14,8 +14,8 @@
 //      String(localized:)（原因见下方「为何需要 L()」）。SwiftUI 的 Text("字面量")
 //      因为会读注入的 \.locale 且经过被重定向的 Bundle.main，可保持不变。
 //
-//  语言列表 AppLanguage.all 必须与工程 CFBundleLocalizations / .xcstrings 实际铺进的语言一致。
-//  未翻译的 key 会回退到英文(CFBundleDevelopmentRegion=en)。
+//  语言列表 AppLanguage.all 必须与 project.yml 的 knownRegions、以及 .xcstrings
+//  实际铺进的语言一致。未翻译的 key 会回退到英文(CFBundleDevelopmentRegion=en)。
 //
 //  说明：本模板兼容 iOS 17+ (@Observable)。iOS 16 及以下把 @Observable 换成
 //  ObservableObject + @Published，@Environment 观察方式相应调整。
@@ -37,7 +37,7 @@ import SwiftUI
 import Foundation
 import ObjectiveC
 
-// MARK: - 支持的语言（与 skill 默认 20 语言对齐；按需增删，但要和 CFBundleLocalizations 一致）
+// MARK: - 支持的语言（20 种；按需增删，但要和 project.yml 的 knownRegions 一致）
 
 /// 每种语言用「母语名」(endonym) 展示，方便用户在任何界面语言下找到自己的语言。
 struct AppLanguage: Identifiable, Hashable {
@@ -45,13 +45,38 @@ struct AppLanguage: Identifiable, Hashable {
     let endonym: String     // 母语显示名，如 "简体中文"
     var id: String { code }
 
-    /// 默认 20 语言（顺序即选择器展示顺序，en 兜底但不必置顶）。
-    /// 本 app 目前只有中英两种译文，所以选择器只列这两个 ——
-    /// 列出没有译文的语言会让用户切过去看到一堆英文 key，体验更差。
-    /// 将来补了译文再往这里加，同时同步 project.yml 的 knownRegions。
+    /// 支持的 20 语言（顺序即选择器展示顺序，en 兜底但不必置顶）。
+    ///
+    /// ⚠️ 这张表必须与两处保持一致，改一处就要同步另两处：
+    ///   1. `Resources/Localizable.xcstrings` / `InfoPlist.xcstrings` 铺进的语言
+    ///   2. `project.yml` 的 `knownRegions`
+    /// 少了 (2)，译文填了也打不进包；这里多列没译文的语言，
+    /// 用户切过去只会看到一堆英文 key。
+    /// （注：不需要 CFBundleLocalizations —— iOS 从包内 *.lproj 目录推导，
+    ///   且 INFOPLIST_KEY_* 写不进数组类型的键，见 project.yml 的说明。）
+    ///
+    /// 母语名（endonym）而非英文名 —— 用户在任何界面语言下都能找到自己的语言。
     static let all: [AppLanguage] = [
         .init(code: "en",      endonym: "English"),
         .init(code: "zh-Hans", endonym: "简体中文"),
+        .init(code: "zh-Hant", endonym: "繁體中文"),
+        .init(code: "ja",      endonym: "日本語"),
+        .init(code: "ko",      endonym: "한국어"),
+        .init(code: "de",      endonym: "Deutsch"),
+        .init(code: "fr",      endonym: "Français"),
+        .init(code: "es",      endonym: "Español"),
+        .init(code: "it",      endonym: "Italiano"),
+        .init(code: "pt-BR",   endonym: "Português (Brasil)"),
+        .init(code: "ru",      endonym: "Русский"),
+        .init(code: "ar",      endonym: "العربية"),
+        .init(code: "hi",      endonym: "हिन्दी"),
+        .init(code: "th",      endonym: "ไทย"),
+        .init(code: "id",      endonym: "Bahasa Indonesia"),
+        .init(code: "tr",      endonym: "Türkçe"),
+        .init(code: "nl",      endonym: "Nederlands"),
+        .init(code: "sv",      endonym: "Svenska"),
+        .init(code: "pl",      endonym: "Polski"),
+        .init(code: "vi",      endonym: "Tiếng Việt"),
     ]
 }
 

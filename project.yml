@@ -4,10 +4,30 @@ options:
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
-  developmentLanguage: zh-Hans
+  developmentLanguage: en
+  # 与 Resources/*.xcstrings 铺进的语言严格一致 —— 少一项，
+  # 该语言的译文即使填了也不会被打进包。
   knownRegions:
-    - zh-Hans
     - en
+    - zh-Hans
+    - zh-Hant
+    - ja
+    - ko
+    - de
+    - fr
+    - es
+    - it
+    - pt-BR
+    - ru
+    - ar
+    - hi
+    - th
+    - id
+    - tr
+    - nl
+    - sv
+    - pl
+    - vi
     - Base
 
 settings:
@@ -16,7 +36,7 @@ settings:
     DEVELOPMENT_TEAM: "YOUR_TEAM_ID"
     CODE_SIGN_STYLE: Automatic
     TARGETED_DEVICE_FAMILY: "1"
-    MARKETING_VERSION: "0.1"
+    MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_EMIT_LOC_STRINGS: YES
   configs:
@@ -87,8 +107,19 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.wmr.pixelpet
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        # 出口合规：全项目零 URLSession/URLRequest（见 AboutView 的注释），
+        # 声明豁免后 ASC 不会反复弹加密问卷。
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        # 不要在这里加 CFBundleLocalizations：INFOPLIST_KEY_* 只支持标量键的白名单，
+        # 数组类型的它会被 Xcode 静默丢弃（试过，Info.plist 里查不到）。
+        # 而且本来不需要 —— iOS 从包内的 *.lproj 目录推导支持语言，
+        # 语言集由下面的 knownRegions + Resources/*.xcstrings 决定。
+        # 显示名与权限文案的**基准值走英文** —— 它同时是 en 和所有
+        # 未翻译语言的兜底。各语言译名由 Resources/InfoPlist.xcstrings 覆盖
+        # （中文系统显示「像素小宠」）。写死单一名字的话，
+        # 图标名不会随系统语言变。
         INFOPLIST_KEY_CFBundleDisplayName: PixelPet
         INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleLightContent
-        INFOPLIST_KEY_NSUserNotificationsUsageDescription: "开启后，宠物饿了或无聊时会提醒你。"
+        INFOPLIST_KEY_NSUserNotificationsUsageDescription: "Get a nudge when your pet is hungry or bored."
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

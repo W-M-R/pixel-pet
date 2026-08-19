@@ -471,16 +471,23 @@ final class IconSourceTests: XCTestCase {
 
     /// **代码里不得出现 emoji 或其它需要字体支持的符号字形。**
     ///
-    /// 允许 CJK（台词、注释里的中文）和全角标点，
-    /// 拦的是 emoji、装饰符号、几何图形这些字形。
+    /// 拦的是 emoji、装饰符号、几何图形 —— 缺字体会渲染成豆腐块。
+    ///
+    /// **文字本身一律放行，不限字种。** 语言选择器里的母语名
+    /// （`한국어`／`हिन्दी`／`ไทย`／`العربية`…）是必须显示的正文，
+    /// 而系统一定带得起这些字。早先这里只放行 CJK（`0x3000...0x9FFF`），
+    /// 谚文在 `0xAC00...0xD7AF` 因此被误判；西里尔／泰文／天城体／阿拉伯文
+    /// 只是碰巧码位 < 0x2000 被 guard 提前跳过，等于这条规则对非拉丁文字
+    /// 的覆盖本来就是漏的。改判「是不是字母」比穷举码段更贴合真实意图。
     func testNoEmojiOrSymbolGlyphsInCode() throws {
         var offenders: [String] = []
         try eachCodeLine { file, line, code in
             for ch in code {
                 let v = ch.unicodeScalars.first!.value
                 guard v > 0x2000 else { continue }            // ASCII 与常见空白
-                if (0x3000...0x9FFF).contains(v) { continue } // CJK
-                if (0xFF00...0xFFEF).contains(v) { continue } // 全角
+                if ch.isLetter || ch.isNumber { continue }    // 任意字种的文字
+                if (0x3000...0x9FFF).contains(v) { continue } // CJK 标点（。、《》…）
+                if (0xFF00...0xFFEF).contains(v) { continue } // 全角标点（，：！…）
                 offenders.append("\(file):\(line) \(ch) U+\(String(v, radix: 16))")
             }
         }

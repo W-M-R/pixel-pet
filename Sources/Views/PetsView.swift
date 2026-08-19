@@ -161,7 +161,10 @@ struct PetsView: View {
             }
 
             if let left = pet.stage.daysToNext(from: pet.ageInDays) {
-                Text(verbatim: String(format: L("settings.stage.next"), left))
+                // 走 L(key, args) 而不是 String(format: L(key), ...)：
+                // 复数变体要靠 stringsdict 选，L() 内部的 String(format:)
+                // 会带上 locale，占位符也统一成 %lld。
+                Text(verbatim: L("settings.stage.next", left))
                     .font(Pixel.mono(Pixel.labelSize))
                     .foregroundStyle(Pixel.textDim.color)
                 PixelBar(value: stageProgress, tint: Pixel.satiety, slots: 20)
@@ -218,7 +221,11 @@ struct PetsView: View {
                 .font(Pixel.mono(Pixel.labelSize))
                 .foregroundStyle(Pixel.textDim.color)
             Spacer(minLength: 0)
-            Text(verbatim: "\(value) \(L(unitKey))")
+            // 数字必须**穿过**本地化格式串，不能在外面拼。
+            // 原来写 "\(value) \(L(unitKey))"，英文永远输出
+            // 「1 days」—— 复数得由 unit.day/unit.times 的
+            // plural 变体来选，拼接绕过了它。
+            Text(verbatim: L(unitKey, value))
                 .font(Pixel.mono(Pixel.bodySize, .semibold))
                 .foregroundStyle(Pixel.text.color)
         }
