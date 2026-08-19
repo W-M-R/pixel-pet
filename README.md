@@ -56,6 +56,14 @@ xcodebuild -project PixelPet.xcodeproj -scheme PixelPet \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' test
 ```
 
+That's everything you need for the simulator — no signing setup required. To run on a real device, point the build at your own Apple team:
+
+```bash
+cp Config/Local.xcconfig.example Config/Local.xcconfig   # then fill in your team ID
+```
+
+`Config/Local.xcconfig` is gitignored, and `Shared.xcconfig` pulls it in via `#include?`, which no-ops when the file is absent. No team ID is committed, so a clone never tries to sign with someone else's account.
+
 ## Architecture
 
 ```

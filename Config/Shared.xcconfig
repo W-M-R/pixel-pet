@@ -1,0 +1,22 @@
+// 共享构建设置。
+//
+// 这里只放「签名相关、且因人而异」的设置。其余构建设置仍在 project.yml ——
+// 那边是工程结构的唯一真相，不要把它整体搬到 xcconfig 里。
+//
+// DEVELOPMENT_TEAM 故意留空：
+// 团队 ID 不是密钥（它本来就随每个 app 二进制分发，单凭它签不了任何东西），
+// 但**写死会让别人克隆后签名失败** —— 他们签不进我的团队。
+// 留空 + 下面的可选 include，让每个人用自己的团队，各自互不干扰。
+//
+// 本机怎么配：
+//   cp Config/Local.xcconfig.example Config/Local.xcconfig
+//   然后填入自己的团队 ID（Xcode → Settings → Accounts 可查）
+//
+// Local.xcconfig 已被 gitignore，不会进库。
+DEVELOPMENT_TEAM =
+
+// `#include?` 的问号表示**可选** —— 文件不存在时静默跳过，不报错。
+// 这正是要的行为：我本机有这份文件，克隆者没有，两边都能正常生成工程。
+// （注意不能用 XcodeGen 的 `include:` 做这件事：它对缺失文件是硬失败，
+//   实测报 NSCocoaErrorDomain 260，`optional: true` 也不管用。）
+#include? "Local.xcconfig"

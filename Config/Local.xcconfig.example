@@ -1,0 +1,9 @@
+// 复制成 Config/Local.xcconfig 后填入你自己的团队 ID。
+//
+//   cp Config/Local.xcconfig.example Config/Local.xcconfig
+//
+// 团队 ID 在 Xcode → Settings → Accounts → 选中账号 → 团队列表里，
+// 或 https://developer.apple.com/account 的 Membership 页面。
+//
+// 只在真机运行 / 打包上架时需要。模拟器不签名，留空也能跑测试。
+DEVELOPMENT_TEAM = YOUR_TEAM_ID

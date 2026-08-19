@@ -30,10 +30,15 @@ options:
     - vi
     - Base
 
+configFiles:
+  Debug: Config/Shared.xcconfig
+  Release: Config/Shared.xcconfig
+
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    DEVELOPMENT_TEAM: "YOUR_TEAM_ID"
+    # DEVELOPMENT_TEAM 不写在这里 —— 见 Config/Shared.xcconfig。
+    # 写死会让克隆者签名失败（他们签不进我的团队）。
     CODE_SIGN_STYLE: Automatic
     TARGETED_DEVICE_FAMILY: "1"
     MARKETING_VERSION: "1.0"

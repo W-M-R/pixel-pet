@@ -23,3 +23,6 @@ Models/
 # Python 字节码（tools/ 下的脚本运行时产生）
 __pycache__/
 *.pyc
+
+# 本机签名覆盖（团队 ID 因人而异，见 Config/Shared.xcconfig）
+Config/Local.xcconfig
