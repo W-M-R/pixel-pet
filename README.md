@@ -110,3 +110,9 @@ Every asset's license is documented verbatim, with source URLs and SHA-256 hashe
 | UI icons | original to this project (`tools/make_ui_icons.py`) | — |
 
 The UI icons are hand-drawn rather than SF Symbols or emoji, for two reasons: emoji are high-resolution gradient art that flattens the pixel feel of a 4×-scaled sprite sitting next to them, and their glyphs change between iOS versions. A test bans `systemName:`/`systemImage:` outright — a missing symbol renders as a tofu box, which is the most glaring possible break in a pixel-art app.
+
+## License
+
+Code is licensed under the [MIT License](LICENSE).
+
+Assets are under their own licenses (see [Assets](#assets) above and [`ASSET-PROVENANCE/`](ASSET-PROVENANCE/) for full details). The LPC pet sprites require attribution under CC-BY 3.0 — if you fork or redistribute, keep the credits intact.
