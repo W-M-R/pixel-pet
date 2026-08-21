@@ -1,0 +1,27 @@
+# Appfile — fastlane 全局身份
+#
+# ⚠️ **这是公开仓库，账号标识一律走 ENV，不写明文。**
+# 邮箱写死会招垃圾邮件与撞库尝试；Team ID 虽然在 ipa 里本来就能看到，
+# 但也没有理由主动铺在 README 级别的位置。
+#
+# 运行前 export（值见 skill 的「个人身份信息」表 / 本地 .envrc）：
+#   ASC_APP_BUNDLE_ID   本项目为 com.wmr.pixelpet
+#   ASC_APPLE_ID        账号持有人 Apple ID
+#   ASC_TEAM_ID         开发者门户 Team ID（个人账号与 itc_team_id 同值）
+#
+# 缺失时给出可读报错，而不是让 fastlane 在中途抛难以定位的异常。
+
+# ⚠️ 这里**不能用 `UI.user_error!`**：Appfile 由 CredentialsManager 加载，
+# 那个上下文里没有 `UI` 常量，调用它只会抛 `uninitialized constant
+# CredentialsManager::AppfileConfig::UI`，然后**继续往下跑** —— 缺失的变量
+# 静默变成 nil，比不检查更糟（实测踩过）。用 raise 才能真正中断。
+def env!(key)
+  v = ENV[key]
+  raise "缺少环境变量 #{key} —— 上架流程需要它，见 fastlane/Appfile 顶部注释" if v.nil? || v.empty?
+  v
+end
+
+app_identifier(env!("ASC_APP_BUNDLE_ID"))
+apple_id(env!("ASC_APPLE_ID"))
+team_id(env!("ASC_TEAM_ID"))
+itc_team_id(env!("ASC_TEAM_ID"))

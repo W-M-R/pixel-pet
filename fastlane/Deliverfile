@@ -1,0 +1,38 @@
+# Deliverfile — deliver 默认值（分类/价格/地区/上传行为）
+#
+# 这些是 iPhone-only、个人应用的合理默认；项目专属值可由工作流覆盖或在阶段5闸口确认。
+
+# 上传边界（与 Fastfile 一致，双保险）
+skip_binary_upload(true)     # 二进制手动传 TestFlight
+submit_for_review(false)     # 提审手动点
+force(true)                  # 非交互，跳过 HTML 预览
+overwrite_screenshots(true)
+run_precheck_before_submit(false)
+
+# 元数据 / 截图路径
+metadata_path("fastlane/metadata")
+screenshots_path("fastlane/screenshots")
+
+# 价格与地区：新版 ASC API 已不再支持 deliver 设置价格/地区。
+# 旧的 price_tier 会走废弃接口，报 availableInNewTerritories / prices 未知字段
+# 而使整个 upload_meta 失败。故价格（免费）与销售地区（全球或仅海外）
+# 一律由你在 ASC 网页手动设定，此处不再自动处理。
+# ⚠️ 切勿再加回 price_tier / app_availability，会让上传直接报错。
+
+# 分类：新版分类标识（旧 MZGenre.* 已废弃，会触发 deprecation 告警甚至失败）
+# 可选值见 https://docs.fastlane.tools/actions/deliver/#reference（如 PHOTO_AND_VIDEO）
+#
+# PixelPet/Pixling 是宠物养成游戏，不是工具 —— 分类错会影响榜单归属与 ASO，
+# 也可能被审核要求改。GAMES 主分类下 Apple **要求再选子分类**
+# （primary_first/second_sub_category），缺了会被 ASC 退回。
+# ⚠️ 子分类必须取自 Apple 的白名单，**iOS 没有 `GAMES_SIMULATION`**（试过，无效）。
+# iOS GAMES 合法子分类只有这 10 个：ACTION / ADVENTURE / BOARD / CASINO /
+# CASUAL / FAMILY / PUZZLE / SPORTS / STRATEGY / TRIVIA。
+# 查法：GET /appCategories?filter[platforms]=IOS&include=subcategories
+primary_category("GAMES")
+primary_first_sub_category("GAMES_CASUAL")
+primary_second_sub_category("GAMES_FAMILY")
+secondary_category("ENTERTAINMENT")
+
+# 年龄分级问卷：默认全 0（无成人内容），如含 UGC/浏览器等需在此调整
+# 详见 docs/overseas-checklist.md

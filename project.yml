@@ -42,7 +42,15 @@ settings:
     CODE_SIGN_STYLE: Automatic
     TARGETED_DEVICE_FAMILY: "1"
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    # build 号。**每次向 ASC 上传都必须递增**，同号会被拒收
+    # （`redundant binary upload`）。
+    # 两次 ITMS-91056（都拒在 PrivacyInfo.xcprivacy，但根因不同）：
+    #   1 → 2：文件写成了 JSON，必须是 plist(XML)。
+    #   2 → 3：已是合法 plist、plutil -lint 也报 OK，但注释里写了含双连字符
+    #          的命令行示例；XML 禁止注释内出现它，Apple 校验器据此判 invalid。
+    # 教训：plutil 通过不充分，要用严格 XML 解析（plistlib）验。详见该文件注释。
+    # 版本号 1.0 不变，只换 build。
+    CURRENT_PROJECT_VERSION: "3"
     SWIFT_EMIT_LOC_STRINGS: YES
   configs:
     # 调试面板（时间快进 / 跳阶段 / 重置存档）只在 Debug 编译进去。
@@ -110,6 +118,17 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.wmr.pixelpet
+        # ⚠️ **必须写在 target 级，不能只写工程级。**
+        #
+        # 上面 `settings.base` 里那份（工程级）会被 XcodeGen 自动给 iOS app
+        # target 补的默认值 `"1,2"` 覆盖掉 —— target 级优先。
+        # 实测后果：ipa 的 Info.plist 里 UIDeviceFamily = [1, 2]，
+        # app 变成「通用」，于是
+        #   ① App Store Connect 多出一个 iPad 截图槽，不传满就无法提审；
+        #   ② 归档时报 "All interface orientations must be supported
+        #      unless the app requires full screen"（iPad 多任务规则）。
+        # 这个 app 只做 iPhone（竖屏、像素场景按 iPhone 比例排版）。
+        TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         # 出口合规：全项目零 URLSession/URLRequest（见 AboutView 的注释），

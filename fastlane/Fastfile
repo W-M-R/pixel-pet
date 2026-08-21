@@ -1,0 +1,204 @@
+# Fastfile — 全托管上架的 lane 集
+#
+# 鉴权统一用 App Store Connect API Key（复用 skill 内 .p8）。
+# 关键 ENV（由 SKILL 工作流 / bootstrap 注入）：
+#   ASC_APP_BUNDLE_ID     派生 bundle id（Appfile 也读它）
+#   ASC_APP_NAME          App Store 显示名
+#   ASC_APP_LANG          主语言 locale，默认 en-US（出海）；中国区可 zh-Hans
+#   ASC_PLATFORM          目标平台 ios（默认）/ osx（Mac App Store）；决定 deliver/produce platform
+#   ASC_KEY_ID            App Store Connect API Key ID（必填，无默认值）
+#   ASC_ISSUER_ID         API Issuer ID（必填，无默认值）
+#   ASC_KEY_PATH          .p8 路径；不设则在 skill secrets/ 与工程 secrets/ 里探测
+#   MAESTRO_FLOW          默认 maestro/smoke.yaml
+#   SIM_DEVICE            默认 "iPhone 16 Pro Max"（截图机型）
+#
+# ⚠️ 认证边界（实测）：
+#   - deliver / precheck / upload_app_privacy...：均需 App Store Connect API Key。
+#   - produce(register) 与 upload_app_privacy_details：这两个 action 在当前
+#     fastlane 版本【不支持 API Key】，会回退到 Apple ID 密码 + 2FA 登录。
+#     全托管是非交互 shell、只有 API Key，故 register/privacy 标为【半自动】：
+#     能查/能生成骨架，但真正写入需你在 ASC 网页手动完成（见各 lane 说明）。
+#
+# 二进制永不自动上传：所有涉及上传的 lane 均 skip_binary_upload。
+# 提交审核永不自动：deliver submit_for_review 恒为 false。
+
+default_platform(:ios)
+
+# ⚠️ **这是公开仓库：API Key ID / Issuer ID 不留默认值。**
+# 它们本身不是密钥（真正的密钥是 .p8，已 gitignore），但和账号一一对应，
+# 没理由公开。缺失时直接中断并说明，而不是回退到某个硬编码值。
+def self.env!(key)
+  v = ENV[key]
+  raise "缺少环境变量 #{key} —— 见 fastlane/Fastfile 顶部的 ENV 说明" if v.nil? || v.strip.empty?
+  v
+end
+
+KEY_ID    = env!("ASC_KEY_ID")
+ISSUER_ID = env!("ASC_ISSUER_ID")
+APP_LANG  = ENV["ASC_APP_LANG"]  || "en-US"
+
+# 目标版本号：版本更新时 export ASC_APP_VERSION=<新版本> 让 deliver 定位/创建
+# 该 App Store 版本（不存在则建 PREPARE_FOR_SUBMISSION，已有 draft 则编辑它）。
+# 首次上架或已有唯一可编辑版本时可不设，deliver 自动取最新可编辑版本。
+# 空串按未设处理，避免 deliver 拿到 "" 报错。
+_ver = (ENV["ASC_APP_VERSION"] || "").strip
+TARGET_APP_VERSION = _ver.empty? ? nil : _ver
+
+# 目标平台：ios（默认，iPhone）/ osx（Mac App Store）。
+# deliver 用 "ios"/"osx"；produce 的 platforms 数组用 "ios"/"osx"。
+# 由 SKILL 停顿⓪ 决定并 export ASC_PLATFORM。多选平台时依次跑（各设一次）。
+ASC_PLATFORM = (ENV["ASC_PLATFORM"] || "ios").downcase
+DELIVER_PLATFORM = (ASC_PLATFORM == "osx" || ASC_PLATFORM == "macos") ? "osx" : "ios"
+PRODUCE_PLATFORM = DELIVER_PLATFORM
+
+# .p8 路径解析：优先 ASC_KEY_PATH；否则按候选逐个探测。
+# 关键修正：fastlane/ 会被拷进【目标工程根】，__dir__ 因此指向「工程/fastlane」，
+# 用相对 "../secrets" 会错误地指向工程根的 secrets/。故把 skill 目录的绝对
+# 候选也纳入，并逐个存在性检测，避免 KEY_PATH 算错。
+def resolve_key_path
+  return ENV["ASC_KEY_PATH"] if ENV["ASC_KEY_PATH"] && File.exist?(ENV["ASC_KEY_PATH"])
+  candidates = [
+    ENV["ASC_KEY_PATH"],
+    File.expand_path("../secrets/AuthKey_#{KEY_ID}.p8", __dir__),      # 工程/secrets
+    File.expand_path("../private_keys/AuthKey_#{KEY_ID}.p8", __dir__), # 工程/private_keys
+    "/Users/wangmingrong/work/skills/ios-appstore-release/secrets/AuthKey_#{KEY_ID}.p8",
+    File.expand_path("~/.appstoreconnect/private_keys/AuthKey_#{KEY_ID}.p8"),
+  ].compact
+  found = candidates.find { |p| File.exist?(p) }
+  UI.user_error!("找不到 .p8 私钥，尝试过：\n#{candidates.join("\n")}\n" \
+                 "请设 ASC_KEY_PATH 指向 AuthKey_#{KEY_ID}.p8") unless found
+  found
+end
+
+KEY_PATH = resolve_key_path
+
+def load_asc_key
+  app_store_connect_api_key(
+    key_id: KEY_ID,
+    issuer_id: ISSUER_ID,
+    key_filepath: KEY_PATH,
+    in_house: false
+  )
+end
+
+platform :ios do
+  # ── 阶段1：模拟闭环自测（Maestro）──────────────────────────────
+  # 需先由工作流把 app 装进模拟器；这里只跑 flow + 收截图。
+  desc "Maestro 冒烟：启动/主路径/截图/崩溃检查"
+  lane :preflight do
+    flow    = ENV["MAESTRO_FLOW"] || "maestro/smoke.yaml"
+    lang    = ENV["ASC_APP_LANG"] || APP_LANG
+    outdir  = "fastlane/screenshots/#{lang}"
+    # junit 报告【不能】写进 screenshots 目录：deliver 只认图片，xml 会干扰上传。
+    # 故落到 build/ 之外的独立目录。
+    reptdir = "build/maestro-reports"
+    sh "mkdir -p #{outdir} #{reptdir}"
+    # maestro test 退出码非 0 视为闭环失败
+    sh "maestro test #{flow} --format junit --output #{reptdir}/maestro-report.xml || (echo '闭环测试失败' && exit 1)"
+    UI.success("闭环自测通过，截图已落 #{outdir}（junit 报告在 #{reptdir}）")
+  end
+
+  # ── 阶段2：出海合规审查 ────────────────────────────────────────
+  desc "precheck 扫 ASC 元数据（出海红线）"
+  lane :compliance do
+    load_asc_key
+    # 规则细节见 Precheckfile；error 级问题会让本 lane 失败并停下。
+    # include_in_app_purchases: false —— API Key 登录下 precheck 无法查内购，
+    # 不排除会直接报错。绝大多数无内购的个人 app 都应保持 false。
+    precheck(
+      app_identifier: ENV["ASC_APP_BUNDLE_ID"],
+      include_in_app_purchases: false
+    )
+    UI.success("precheck 通过")
+  end
+
+  # ── 阶段3：identifier 注册（建 App ID + ASC 记录）【半自动】──────
+  # ⚠️ produce 不支持 API Key，会回退到 Apple ID 密码 + 2FA。非交互 shell 下
+  #    必然失败。因此本 lane 仅在【有交互终端 + 已配 FASTLANE_PASSWORD/2FA】时可用。
+  #    全托管默认路径：先用 asc_status.py app <bundleId> 查记录是否已存在——
+  #      · 已存在 → 直接复用，跳过本 lane；
+  #      · 不存在 → 由你在 ASC 网页新建 app 记录（或在交互终端手动跑本 lane）。
+  desc "produce：注册 App ID + 创建 ASC app 记录（半自动，需 Apple ID 登录）"
+  lane :register do
+    load_asc_key
+    produce(
+      app_identifier: ENV["ASC_APP_BUNDLE_ID"],
+      app_name: ENV["ASC_APP_NAME"],
+      language: APP_LANG,                        # 主语言（默认 en-US）
+      app_version: ENV["ASC_APP_VERSION"] || "1.0",
+      sku: ENV["ASC_APP_BUNDLE_ID"],             # SKU 用 bundle id，稳定唯一
+      platforms: [PRODUCE_PLATFORM],             # ios / osx（由 ASC_PLATFORM 决定）
+      enable_services: {}                        # 无特殊能力；按需在此声明
+    )
+    UI.success("App 记录就绪（若已存在则复用）")
+  end
+
+  # ── 阶段5：元数据 + 截图 + 海报 上传 ───────────────────────────
+  # 二进制不传（你手动 TestFlight）；不提审（你手动点 Submit）。
+  # 支持多语言：metadata/ 与 screenshots/ 下的每个 locale 子目录都会被上传。
+  desc "deliver：上传元数据/截图/海报（不传二进制、不提审）"
+  lane :upload_meta do
+    load_asc_key
+    deliver({
+      app_identifier: ENV["ASC_APP_BUNDLE_ID"],
+      platform: DELIVER_PLATFORM,      # ios / osx（macOS 上架必须 osx，否则截图槽不符被拒）
+      skip_binary_upload: true,        # 二进制你手动传（iOS→TestFlight/ipa，macOS→pkg）
+      submit_for_review: false,        # 提审你手动点
+      force: true,                     # 跳过 HTML 预览确认（非交互）
+      overwrite_screenshots: true,     # 覆盖旧截图
+      run_precheck_before_submit: false, # 已在 compliance lane 单独跑
+      precheck_include_in_app_purchases: false,
+      metadata_path: "fastlane/metadata",
+      screenshots_path: "fastlane/screenshots"
+    }.merge(
+      # 版本更新：定位/创建目标 App Store 版本；首版本可不设。
+      TARGET_APP_VERSION ? { app_version: TARGET_APP_VERSION } : {}
+    ))
+    UI.success("元数据 + 截图/海报已上传。请用 `asc_status.py screenshots <appId>` " \
+               "回查落库数量；若数量翻倍用 `asc_status.py dedupe-screenshots <appId>` 去重。")
+  end
+
+  # ── 阶段5：只传截图/海报（跳过元数据）─────────────────────────
+  # 用途：元数据已上传、本轮只想【替换截图/海报】时用本 lane，而非 upload_meta。
+  # 关键原因（实测）：fastlane 已知 bug #20538 —— 首次发布的版本重跑 upload_meta，
+  # 在上传本地化元数据阶段会抛 `No data` (RuntimeError) 而中断。skip_metadata 后
+  # 只走截图上传路径，绕开该 bug。
+  # 上传后务必 `asc_status.py screenshots <appId>` 回查；若翻倍（deliver 校验竞态
+  # 触发重试导致同名图重复）用 `asc_status.py dedupe-screenshots <appId>` 去重。
+  desc "deliver：只上传截图/海报（跳过元数据，绕开首版本 No data bug）"
+  lane :upload_screens do
+    load_asc_key
+    deliver({
+      app_identifier: ENV["ASC_APP_BUNDLE_ID"],
+      platform: DELIVER_PLATFORM,      # ios / osx（由 ASC_PLATFORM 决定）
+      skip_binary_upload: true,
+      skip_metadata: true,             # 只传截图，绕开首版本元数据 No data bug
+      skip_app_version_update: true,   # 不动版本字段
+      submit_for_review: false,
+      force: true,
+      overwrite_screenshots: true,
+      run_precheck_before_submit: false,
+      screenshots_path: "fastlane/screenshots"
+    }.merge(
+      # 版本更新：指定目标版本，确保截图落到正在准备的新版本槽而非旧的在售版本。
+      TARGET_APP_VERSION ? { app_version: TARGET_APP_VERSION } : {}
+    ))
+    UI.success("截图/海报已上传。请用 `asc_status.py screenshots <appId>` 回查；" \
+               "翻倍则 `asc_status.py dedupe-screenshots <appId>` 去重。")
+  end
+
+  # ── 隐私营养标签（App Privacy）【半自动】───────────────────────
+  # ⚠️ upload_app_privacy_details_to_app_store 在当前 fastlane 版本【不支持
+  #    API Key】（连 api_key 参数都没有），只能走 Apple ID 会话 + 2FA。
+  #    全托管非交互下无法完成。故本 lane 仅生成/校验 JSON 骨架，真正写入需你
+  #    在 ASC 网页「App 隐私」表单手动填（个人本地/无收集类 app：选『不收集数据』）。
+  #    JSON 骨架由 overseas_check.py 生成于 fastlane/app_privacy_details.json。
+  desc "隐私营养标签（半自动：仅校验 JSON，写入走 ASC 网页）"
+  lane :privacy do
+    json = "fastlane/app_privacy_details.json"
+    UI.user_error!("缺 #{json}，请先跑 overseas_check.py 生成骨架") unless File.exist?(json)
+    UI.message("隐私标签 JSON 已就绪：#{json}")
+    UI.important("⚠️ 该 action 不支持 API Key，无法自动上传。")
+    UI.important("   请在 ASC 网页 → App 隐私 → 手动按 JSON 内容填写（默认『不收集数据』）。")
+  end
+end

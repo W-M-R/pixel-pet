@@ -26,3 +26,27 @@ __pycache__/
 
 # 本机签名覆盖（团队 ID 因人而异，见 Config/Shared.xcconfig）
 Config/Local.xcconfig
+
+# Local Netlify folder
+.netlify
+
+# ───── 上架工具链（ios-appstore-release skill 拷进来的） ─────
+# ⚠️ 含 App Store Connect 私钥，绝不能进库。
+# asc_api_key.json 里是完整的 .p8 PEM，泄露等于交出整个开发者账号的 API 权限。
+#
+# ⚠️ 这一段曾被 `netlify sites:create` 覆写掉过（它会重写整个 .gitignore
+# 来追加 `.netlify`）。改动本文件后务必用 `git check-ignore -v` 复验，
+# 别只信「我刚写过」。
+fastlane/asc_api_key.json
+private_keys/
+*.p8
+
+# fastlane 运行产物
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/test_output/
+.bundle/
+vendor/
+
+# Maestro 自测报告
+maestro-reports/

@@ -1,0 +1,54 @@
+# Precheckfile — 出海合规红线规则（fastlane precheck）
+#
+# level 三档：:skip 不检查 / :warn 警告继续 / :error 报错并停止
+# 触发 :error 时 compliance lane 会失败，工作流停在阶段2 闸口等你处理。
+
+# 负面提及 Apple/iOS（如"修复了 iOS 的 bug"）——App Store 敏感，报错
+negative_apple_sentiment(level: :error)
+
+# Apple 商标词（iOS/iPhone/iPad/Live Photo 等）——Guideline 5.2.5 知识产权红线。
+# ⚠️ 只能 :warn，不能 :error：因为描述里写 "Requires iOS 17 or later /
+#    需要 iOS 17 或更高版本" 这种系统兼容性说明是 Apple【允许】的，会被误杀。
+# 真正违规的是把 iOS/iPhone 用在【App 名称 / 副标题】里（如"把视频转成 iOS 实况照片"），
+# precheck 无法只扫副标题字段，故此处仅给全局告警，由阶段2闸口人工判断——
+# 重点核对 name.txt / subtitle.txt 是否含这些词（见 overseas-checklist.md 三）。
+apple_trademarks = [
+  "iOS", "iPhone", "iPad", "iPadOS", "macOS", "watchOS", "tvOS",
+  "App Store", "Apple", "Siri", "iCloud", "AirDrop"
+]
+custom_text(data: apple_trademarks, level: :warn)
+
+# 占位符文本（lorem ipsum / "文字在此" 等）——绝不能上线，报错
+placeholder_text(level: :error)
+
+# 提及其他平台（Android / 安卓 / Blackberry / 鸿蒙等）——报错
+other_platforms(level: :error)
+
+# 宣传尚未上线的功能——警告（有时是路线图表述）
+future_functionality(level: :warn)
+
+# 表明这是测试版的字样（test / beta / 测试）——报错
+test_words(level: :error)
+
+# 脏词/不当用词——报错
+curse_words(level: :error)
+
+# 版权年份缺失或未来年份——报错
+copyright_date(level: :error)
+
+# 元数据里的 URL 可达性（隐私/支持/营销）——报错，避免 ASC 退回
+unreachable_urls(level: :error)
+
+# 自定义出海红线词表：
+# - 修图类高危词（去水印/remove watermark 等易触发版权/误导审核）
+# - 夸大/绝对化用语（最佳/第一/100% 等，部分区域广告法敏感）
+# - 免费诱导（免费/free 用于 IAP 语境）
+custom_text(
+  data: [
+    "去水印", "remove watermark", "watermark removal",
+    "破解", "crack", "hack",
+    "最佳", "第一", "唯一", "100%", "永久免费",
+    "best in the world", "number one", "guaranteed"
+  ],
+  level: :warn   # 先警告：这些词按语境判断，交给阶段2闸口人工确认
+)

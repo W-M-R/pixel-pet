@@ -1,13 +1,47 @@
-{
-  "NSPrivacyTracking" : false,
-  "NSPrivacyTrackingDomains" : [],
-  "NSPrivacyCollectedDataTypes" : [],
-  "NSPrivacyAccessedAPITypes" : [
-    {
-      "NSPrivacyAccessedAPIType" : "NSPrivacyAccessedAPICategoryUserDefaults",
-      "NSPrivacyAccessedAPITypeReasons" : [
-        "CA92.1"
-      ]
-    }
-  ]
-}
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Privacy manifest.
+
+         WARNING: never write a double hyphen inside an XML comment.
+         XML forbids it, so a file containing e.g. the literal flag
+         "altool [two hyphens]validate-app" is not well formed even though
+         `plutil -lint` still reports OK. Apple's validator is strict and
+         rejects it with ITMS-91056. This exact mistake cost Pixling 1.0
+         build 2 a rejection.
+
+         Also, for reference, build 1 was rejected because this file had been
+         written as JSON. It must be a plist (XML): Apple's docs render the
+         keys in a JSON-ish style that is easy to copy verbatim, and a JSON
+         file still builds and still passes altool validation before being
+         rejected after submission.
+
+         Verify BOTH the source and the packaged copy before uploading, and
+         use a strict XML parser, not only plutil:
+             plutil -lint Sources/Support/PrivacyInfo.xcprivacy
+             python3 -c "import plistlib;plistlib.load(open('Sources/Support/PrivacyInfo.xcprivacy','rb'))"
+         plutil passing is necessary but NOT sufficient.
+
+         This app: zero networking, zero data collection. The only Required
+         Reason API is UserDefaults (pets / coins / room layout).
+         CA92.1 = access info from the same app. -->
+    <key>NSPrivacyTracking</key>
+    <false/>
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array/>
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>CA92.1</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

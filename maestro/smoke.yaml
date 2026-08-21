@@ -1,0 +1,38 @@
+# Maestro 冒烟 flow 模板（iPhone 闭环自测）
+#
+# 目的：装到模拟器的 app → 启动无崩溃 → 走主路径 → 沿途截图（供上架用）。
+# 用法：由 SKILL 阶段1 调用 `maestro test maestro/smoke.yaml`。
+# 截图默认落 fastlane/screenshots/zh-Hans/，文件名前缀即上架顺序。
+#
+# ⚠️ 本文件是模板：{{APP_ID}} 与各步骤需按目标 app 的实际 UI 由工作流改写。
+# Maestro 语法参考：https://docs.maestro.dev
+
+appId: {{APP_ID}}          # = 派生 bundle id，例 com.wmr.zanxingjizhang
+---
+# 冷启动
+- launchApp:
+    clearState: true       # 干净首启，规避残留状态
+- assertVisible:           # 启动后应出现的首个可见元素（按实际改）
+    text: ".*"             # 占位：改成首页标志性文案/控件
+
+# 首页截图（上架第 1 张）
+- takeScreenshot: fastlane/screenshots/zh-Hans/01_home
+
+# ── 主路径示例（按 app 实际交互改写）───────────────────────────
+# 下面是通用模板步骤，工作流会依据真实 UI 层级替换：
+#
+# - tapOn:
+#     text: "开始"           # 点主功能入口
+# - assertVisible:
+#     text: "结果"           # 断言进入了下一屏（崩溃/卡死会失败）
+# - takeScreenshot: fastlane/screenshots/zh-Hans/02_main
+#
+# - tapOn:
+#     id: "some_button_id"   # 也可用无障碍 id 定位，更稳
+# - takeScreenshot: fastlane/screenshots/zh-Hans/03_detail
+
+# 回到前台再验一次，确保无崩溃
+- pressKey: Home
+- launchApp                # 不清状态，验证热启动
+- assertVisible:
+    text: ".*"

@@ -1,0 +1,45 @@
+# Maestro「给审核员看的演示」flow 模板（被拒重传 RR-3.5 用）
+#
+# 目的：驱动一段屏幕录制，证明审核员说"找不到"的东西【确实存在、且点了有反应】。
+# 用法：由 SKILL 的 RR-3.5 调用，配合 `xcrun simctl io <UDID> recordVideo` 一起跑。
+# 为什么用 Maestro 驱动而不是手点：每步都有断言，不会录出漏操作/停顿杂乱的废片；
+# 断言失败就说明"审核员也会找不到"，此时该改 app 而不是重录。
+#
+# ⚠️ 本文件是模板：{{APP_ID}} 与各步骤需按拒信议题和目标 app 的实际 UI 由工作流改写。
+# 下面以最常见的 3.1.2(c)「app 内缺 EULA 链接」为例。
+#
+# ⚠️ 两条硬约束（踩过坑）：
+#  1. 【不要用 clearState】——会清掉为复现审核员语言环境而写入的 app 域偏好
+#     （`defaults write <bundleId> AppleLanguages -array en`），界面会切回中文。
+#  2. assertVisible 只对【处于可视区域内】的元素通过。故"打开付费墙后不做任何 scroll
+#     直接断言链接"即是【首屏可见】的机器证明——这正是审核员看不到的根因所在。
+
+appId: {{APP_ID}}          # = 派生 bundle id，例 com.wmr.shiwu3d
+---
+- launchApp                # 注意：不加 clearState
+- waitForAnimationToEnd
+
+# ── ① 购买流程【外】也能到达（审核员找法律链接的第一站常是设置/关于区）──────
+- tapOn:
+    id: "ellipsis"         # 侧边栏/更多入口；无 accessibilityIdentifier 时改用文本 tapOn
+- waitForAnimationToEnd
+- assertVisible: "Terms of Use (EULA)"
+- assertVisible: "Privacy Policy"
+
+# ── ② 进入购买流程（付费墙/订阅页）────────────────────────────────
+- tapOn: "Upgrade to Pro"
+- waitForAnimationToEnd
+- assertVisible: "Unlock Pro"
+
+# ── ③ 3.1.2(c) 要求项与订阅按钮【同屏、未滚动】────────────────────
+- assertVisible: "Pro Monthly"                     # 订阅名称
+- assertVisible: "Terms of Use (EULA)"             # 未滚动即可见 ← 关键
+- assertVisible: "Privacy Policy"
+- assertVisible: "Subscribe to Unlock"             # 与订阅按钮同屏
+# 续订说明（周期+价格+自动续订），按实际文案改：
+# - assertVisible: "Auto-renewable subscription · 1 month · renews monthly until cancelled"
+
+# ── ④ 证明链接是 functional 的：点击后真能打开条款页面 ──────────────
+- tapOn: "Terms of Use (EULA)"
+- waitForAnimationToEnd
+# 录屏脚本会在此后 sleep 几秒，让条款页面在画面上停留，便于审核员看清
